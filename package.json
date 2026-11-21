@@ -1,5 +1,5 @@
 {
-  "name": "magpie-agent-tianshu",
+  "name": "magpie-agent-tianshu-harness",
   "version": "1.0.0",
   "description": "Tianshu (天枢 / rivet harness) as a Magpie agent: pick one of Magpie's models for it from Magpie's own Agents page",
   "type": "module",
@@ -25,7 +25,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/LUMOGRESS/magpie-agent-tianshu.git"
+    "url": "git+https://github.com/LUMOGRESS/magpie-agent-Tianshu-harness.git"
   },
   "scripts": {
     "test": "node --test tianshu.test.mjs"
