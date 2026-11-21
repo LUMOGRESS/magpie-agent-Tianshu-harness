@@ -228,10 +228,21 @@ test("a rung rivet has no name for says what to send instead", () => {
   assert.deepEqual(_internal.reasoningCapabilities(["low", "medium", "high", "xhigh"]), {
     effortFormat: "reasoning_effort",
     effortLevels: ["low", "medium", "high", "xhigh"],
+    reasoningSplit: true,
     effortCap: { max: "xhigh" },
   });
   // a ladder with no "low" sends "low" as "minimal", as Tianshu's own probe does
   assert.deepEqual(_internal.reasoningCapabilities(["minimal", "medium"]).effortCap, { low: "minimal" });
+});
+
+test("declares reasoningSplit so thinking that arrives in reasoning_content is kept", () => {
+  // magpie's gateway answers like the split protocol: reasoning lands in
+  // `reasoning_content`, the answer in `content`. Verified live against
+  // auto/glm-5.3-flash (718 chars of reasoning, 0 chars of content — an empty
+  // reply without this flag), trae-cn/qwen3.8-flash-max and
+  // dgemini/gemini-4-neon, all 200 with reasoning_split: true.
+  const caps = _internal.reasoningCapabilities(["low", "high"]);
+  assert.equal(caps.reasoningSplit, true);
 });
 
 test("a model with no reasoning rungs gets no capabilities at all", () => {
@@ -303,6 +314,27 @@ test("writes the same thing twice, since magpie calls connect again on every cha
   const second = connect({ gateway, models });
   assert.deepEqual(second, first);
   assert.deepEqual(JSON.parse(JSON.stringify(first)), first, "the result must survive magpie's JSON hand-off");
+});
+
+test("a model list that is not a list stops before writing anything", () => {
+  // magpie hands `models` over; a shape it does not recognise means the
+  // hand-off changed, and a provider written from it would be silently empty
+  for (const bad of ["not-a-list", 42, {}, true]) {
+    assert.throws(() => connect({ gateway, models: bad }), /not a list/, `should reject ${JSON.stringify(bad)}`);
+  }
+  // absent or null is a gateway that simply has no models yet — not an error
+  assert.doesNotThrow(() => connect({ gateway, models: undefined }));
+  assert.doesNotThrow(() => connect({ gateway, models: null }));
+  assert.doesNotThrow(() => connect({ gateway, models: [] }));
+});
+
+test("the notice names the action and then the remedy, in both languages", () => {
+  // agent-kilo's wording is the reference: what Tianshu does, then what the
+  // user has to do about it
+  assert.match(agent.notice, /session starts/i);
+  assert.match(agent.notice, /restart/i);
+  assert.match(agent.notice, /重启/);
+  assert.match(agent.notice, /新开一个会话/);
 });
 
 test("refuses to point Tianshu at a gateway it was given no address or key for", () => {
