@@ -23,7 +23,7 @@
 magpie plugin add /path/to/this/folder
 
 # 或从 git
-magpie plugin add github:<你的仓库>/magpie-agent-tianshu
+magpie plugin add github:LUMOGRESS/magpie-agent-tianshu
 ```
 
 装上之后打开 magpie → **Agents**，天枢这一行出现了。在此之前先确认天枢已装：
@@ -125,7 +125,7 @@ magpie 每十分钟查一次 GitHub，之后插件会出现在 **插件 → 发�
 - `LICENSE` 必须是 GitHub 能识别的标准文本，否则卡片回退到 `package.json` 的 `license`。本包的 LICENSE 保持 MIT 原文，图标版权单独放在 `NOTICE`；
 - fork、已归档的仓库、以及 `magpie-community/` 自己的仓库不会显示。
 
-别人这样装：`magpie plugin add github:<owner>/magpie-agent-tianshu`。
+别人这样装：`magpie plugin add github:LUMOGRESS/magpie-agent-tianshu`。
 
 ### 2. 发到 npm —— 让「发现」页的搜索找得到
 
