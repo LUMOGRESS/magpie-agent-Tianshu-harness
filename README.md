@@ -96,6 +96,34 @@ magpie tianshu default         # 取消接入，把天枢原来的配置还回�
 - **不写 skills / instructions**：天枢的运行时只从 `.rivet/skills` 加载技能（源码原话：*the runtime only ever loads from .rivet/skills — external dirs are never loaded*），而 magpie 资源库写的是 `~/.agents/skills` 一类的外部目录。声明 `library.skills` 不会让天枢加载到它们，只会制造一个看起来生效、实际空转的配置。
 - **只碰一个文件**：`~/.rivet/config.json`。天枢其余配置由天枢自己管。
 
+## 与社区官方 agent 包的对照
+
+`magpie-community/plugins` 里 20 个 agent 包逐字段看过一遍，本包与之对齐或有意不同的地方：
+
+| 字段 | 社区用法 | 本包 | 依据 |
+|---|---|---|---|
+| `dir` | 19/20 都写 | `~/.rivet` | `agent-deepzora`（同为带桌面端的 harness）写 `~/.deepzora` |
+| `bin` | 11/20 写 | `tianshu` | 与 `agent-kilo` 同构 |
+| `aliases` | 少数包写 | `["rivet"]` | 天枢的第二个命令名 |
+| `notice` | 全部 20 个都写 | 中英并列 | 措辞照 `agent-kilo`：先说行为，再说补救 |
+| `config` 写在自己目录 | 9/20 这么做 | **不用** | 详见下 |
+| `library` | 5/20 写 | **不写** | 详见下 |
+
+**为什么不像 `agent-kimi-desktop` / `agent-nanobot` 那样把 config 指向 `~/.config/magpie-*/`**
+
+那 9 个包能把配置写在自建文件里，是因为它们的 agent 接受一个配置文件路径参数（或环境变量）。天枢有 `RIVET_CONFIG_PATH`，实测有效：指向不存在的文件时，天枢会退回「API key 未设置」，证明确实读的是那个路径；用一个自建的 config 也能完整跑通（实测返回正常回答）。但设这个变量要从**启动方式**入手（`launch.env`），而 magpie 的 agent 插件只能写文件、不能设环境变量。天枢从 Windows 快捷方式或 `tianshu` 命令直接启动时，环境里没有这个变量，隔离文件就白写了。
+
+所以这里写天枢真正读取的 `~/.rivet/config.json`，只碰两个键，其余原样。安全网是 magpie 自己的 `Unwire` 契约（`internal/agent/agent.go`）：第一次写入前把字段原值 stash 起来，关掉开关时还原。
+
+**为什么仍然不写 `library`**
+
+5 个写 `library` 的包，其 agent 都能从某个目录读技能、从某个 JSON 读 MCP 服务器。天枢两样都不同：
+
+- 技能：rivet 的加载路径是固定写死的——源码注释原话 *the runtime only ever loads from .rivet/skills — external dirs are never scanned in place*，而且它自己的机制是「把 `.claude/skills` 里的技能**复制进** `.rivet/skills`」再加载。magpie 资源库往外部目录写，天枢不会去看。
+- MCP：天枢的服务器在 `~/.rivet/config.json` 的 `mcp.servers` 下，形状是自己的；magpie 可写的 `mcpFormat` 白名单里没有这一种。
+
+两样都声明了也不会生效，只会做出一个看起来接上、实际空转的配置。
+
 ## 测试
 
 ```bash

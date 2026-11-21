@@ -14,6 +14,17 @@
 // not know is left out rather than written as 0: rivet infers a missing size
 // from the model id, but reads 0 as "no budget at all".
 
+//
+// Why this file and not one of magpie's own, as agent-kimi-desktop and
+// agent-nanobot do: those agents read a config file magpie can point them at.
+// Tianshu does not — `RIVET_CONFIG_PATH` exists, but only a launcher can set
+// it, and magpie's agent plugins can write files, not environment. So the two
+// keys Tianshu selects its model with are written where Tianshu reads them,
+// in Tianshu's own schema, and every other key in that file is left alone.
+// magpie's own Unwire contract is the safety net: it stashes what a field had
+// before its first write and puts it back when the switch goes off
+// (internal/agent/agent.go), so nothing here has to keep a copy.
+
 const PROVIDER_KEY = "magpie";
 const MODEL_PREFIX = "magpie:";
 
@@ -61,11 +72,14 @@ export const agent = {
   name: "天枢 Tianshu",
   // Tianshu is a harness, not a bare CLI: `tianshu-harness` puts `tianshu`
   // (the TUI/desktop/VS Code entry point) and `rivet` (the same binary under
-  // its older name) on PATH, and magpie detects it by those commands — the
-  // way agent-kilo detects Kilo and agent-deepzora detects DeepSeek Harness.
-  // `dir` stays unset: ~/.rivet is where Tianshu keeps its settings, which
-  // proves a config exists, not that the harness is installed.
+  // its older name) on PATH. `dir` is the second signal magpie accepts, and
+  // 19 of the 20 agent packages in this community ship one — deepzora (the
+  // closest relative, a harness with its own desktop app) declares
+  // "~/.deepzora" beside its bin. Tianshu's folder is ~/.rivet on Unix and
+  // %LOCALAPPDATA%\.rivet on Windows; the Unix spelling is the one magpie
+  // expands, and Windows resolves the same way for both.
   bin: "tianshu",
+  dir: "~/.rivet",
   aliases: ["rivet"],
   config: "~/.rivet/config.json",
   format: "json",

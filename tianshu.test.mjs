@@ -101,11 +101,12 @@ test("says where Tianshu keeps its model", () => {
   assert.equal(agent.prefix, "magpie:");
 });
 
-test("is detected by Tianshu's own command, not by its config folder", () => {
-  // agent.dir would make magpie take ~/.rivet for an install of its own; that
-  // folder is where Tianshu keeps its settings, not evidence it is here.
+test("is detected by Tianshu's own command, with its folder as the second signal", () => {
+  // 19 of the 20 agent packages in magpie-community ship a `dir` beside their
+  // `bin`; deepzora, the nearest relative (a harness with a desktop app),
+  // declares "~/.deepzora". Tianshu's folder is ~/.rivet.
   assert.equal(agent.bin, "tianshu");
-  assert.equal(agent.dir, undefined);
+  assert.equal(agent.dir, "~/.rivet");
   // `rivet` is the same entry point under a second name
   assert.deepEqual(agent.aliases, ["rivet"]);
 });
