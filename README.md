@@ -89,7 +89,7 @@ magpie tianshu default                     # 取消接入，天枢恢复原样
 
 ## 注意事项
 
-**同一台机器上不要装两个天枢插件。** 每个插件都用 agent id `tianshu`，magpie 只会让其中一个生效。如果你从本地文件夹装过开发版，先用 `magpie plugin rm` 移除，再装这个。
+**同一台机器上只装一个天枢插件。** 所有 magpie 的天枢插件都使用同一个 agent id `tianshu`，装了两个也只有其中一个生效，另一个会一直挂着但不起作用。
 
 **天枢的设置文件在** `~/.rivet/config.json`。这条路径取决于天枢怎么装的，想确认就直接问 magpie：
 
