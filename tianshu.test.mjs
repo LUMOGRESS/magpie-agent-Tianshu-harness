@@ -137,6 +137,10 @@ test("the package declares this module as its agent and carries the Tianshu icon
     assert.equal(Buffer.byteLength(pkg.magpie.summary[lang], "utf8") <= 300, true);
   }
 
+  // the Agent row reads the hook's own icon; declaring it there is what put
+  // Tianshu's plate in magpie's Agents list instead of the generic cube
+  assert.equal(agent.icon, pkg.magpie.icon, "agent.icon must be the same picture as magpie.icon");
+
   // the agent entry is a moejs module: no main, nothing to install
   assert.equal(pkg.main, undefined);
   assert.equal(pkg.dependencies, undefined);
