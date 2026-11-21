@@ -1,0 +1,9 @@
+magpie-agent-tianshu
+Copyright (c) 2026 magpie-agent-tianshu contributors
+
+This product includes the Tianshu (天枢) application icon, taken from
+https://github.com/huiliyi37/Tianshu-harness (docs/brand/assets/app-icon.svg)
+and used under the same MIT license as the rest of this package.
+
+The icon is embedded in package.json (magpie.icon) and in tianshu.agent.js
+(agent.icon) as a data URI, byte for byte as published upstream.

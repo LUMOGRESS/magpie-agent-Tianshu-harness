@@ -6,7 +6,8 @@
   "files": [
     "tianshu.agent.js",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "NOTICE"
   ],
   "keywords": [
     "magpie",
@@ -15,7 +16,11 @@
     "tianshu",
     "天枢",
     "rivet",
-    "llm-gateway"
+    "llm-gateway",
+    "opencode",
+    "opencode-plugin",
+    "plugin",
+    "provider"
   ],
   "license": "MIT",
   "scripts": {

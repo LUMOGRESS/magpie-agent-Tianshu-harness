@@ -103,6 +103,66 @@ node --test tianshu.test.mjs
 
 测试按天枢 `dist` 里 `modelConfigSchema` / `providerBaseSchema` 的字段集校验写出的每一条，防止写出会被 zod 静默丢弃的键。
 
+
+## 让别人在 magpie 里看到它
+
+magpie 的「发现」页有四个位置能露出插件，门槛依次提高。这个包是 **agent 插件**，下面每一步都只针对它。
+
+### 1. GitHub 加 `magpie-plugin` topic —— 最快，几分钟生效
+
+把仓库推到 GitHub，然后给它打 tag：
+
+```bash
+gh repo create magpie-agent-tianshu --public --source=. --push
+gh repo edit --add-topic magpie-plugin
+```
+
+magpie 每十分钟查一次 GitHub，之后插件会出现在 **插件 → 发现 → 非官方插件 · GitHub**，按 Star 排序，并标明「没有人审阅过」。要求：
+
+- `package.json` 在**仓库根目录**（本仓库就是）；
+- 插件要加载的文件必须提交进仓库（`tianshu.agent.js` 已提交，没有构建步骤）；
+- 卡片图标取 `package.json` 里的 `magpie.icon`（本包已内联）；
+- `LICENSE` 必须是 GitHub 能识别的标准文本，否则卡片回退到 `package.json` 的 `license`。本包的 LICENSE 保持 MIT 原文，图标版权单独放在 `NOTICE`；
+- fork、已归档的仓库、以及 `magpie-community/` 自己的仓库不会显示。
+
+别人这样装：`magpie plugin add github:<owner>/magpie-agent-tianshu`。
+
+### 2. 发到 npm —— 让「发现」页的搜索找得到
+
+```bash
+npm publish --access public
+```
+
+搜索规则（文档原文）：`插件里的搜索会向 npm 查询 <关键词> opencode，显示名字或 keywords 里同时含有 opencode 和 auth、plugin、provider 之一的包`。所以 keywords 里必须有 **`opencode`**，并且至少有一个 `auth` / `plugin` / `provider` 词——本包的 `["opencode", "opencode-plugin", …]` 满足这条，缺了就会被搜不到。
+
+发 npm 后别人可以 `magpie plugin add magpie-agent-tianshu`，详情页显示的是 npm 上的这份 README。
+
+### 3. 进官方推荐列表 —— 需要 PR
+
+**插件页的推荐位来自社区仓库的 `registry.json`**，magpie 最多每六小时拉一次。提 PR 到 `magpie-community/plugins`，加一条 agent 条目（agent 条目不写 `providers`）：
+
+```json
+{
+  "package": "magpie-agent-tianshu",
+  "name": "天枢 Tianshu",
+  "icon": "data:image/svg+xml;base64,…",
+  "kind": "agent",
+  "community": true,
+  "summary": {
+    "en": "Connect Tianshu (天枢 / rivet harness) to any Magpie model from Magpie's Agents page.",
+    "zh": "在 magpie 的 Agents 页为天枢（Tianshu / rivet harness）选 magpie 的模型。"
+  }
+}
+```
+
+`package` 是 **npm 包名**——所以这条路要求先完成第 2 步。条目渲染可以用 `MAGPIE_PLUGIN_MARKET=<你的 registry.json 地址> magpie ...` 先自查，`MAGPIE_PLUGIN_MARKET=off` 则只用内置副本。
+
+### 4. 收进 magpie-community —— 由社区维护、自动更新
+
+把包放进 `magpie-community/plugins` 的 `packages/<name>`，按命名约定改成 `@magpie-community/agent-tianshu`，版本号推到 `main` 就自动发布，之后每个装了它的 magpie 会自动更新，不需要用户点「更新」。
+
 ## 许可
 
-MIT
+MIT。图标是 Tianshu（天枢）自己的应用图标，取自
+Tianshu-harness 的
+`docs/brand/assets/app-icon.svg`，逐字节内联，出处见 `NOTICE`。
