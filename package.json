@@ -23,6 +23,10 @@
     "provider"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LUMOGRESS/magpie-agent-tianshu.git"
+  },
   "scripts": {
     "test": "node --test tianshu.test.mjs"
   },
