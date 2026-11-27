@@ -98,7 +98,7 @@ test("says where Tianshu keeps its model", () => {
   assert.equal(agent.config, "~/.rivet/config.json");
   assert.equal(agent.format, "json");
   assert.equal(agent.model, "agent.defaultModel");
-  assert.equal(agent.prefix, "magpie:");
+  assert.equal(agent.prefix, "tianshu-harness:");
 });
 
 test("is detected by Tianshu's own command, with its folder as the second signal", () => {
@@ -151,9 +151,9 @@ test("the package declares this module as its agent and carries the Tianshu icon
 
 test("points Tianshu at magpie as an OpenAI-compatible provider", () => {
   assert.deepEqual(connect({ gateway, models: [] }), {
-    "provider.default": "magpie",
-    "provider.providers.magpie": {
-      name: "magpie",
+    "provider.default": "tianshu-harness",
+    "provider.providers.tianshu-harness": {
+      name: "Tianshu Harness",
       baseUrl: "http://127.0.0.1:3425/v1",
       protocol: "openai",
       apiKey: "magpie-tianshu",
@@ -163,7 +163,7 @@ test("points Tianshu at magpie as an OpenAI-compatible provider", () => {
 
 test("a provider with no models says so by having no list, not an empty one", () => {
   // rivet reads an empty `models` as a provider that can serve nothing
-  const provider = connect({ gateway, models: [] })["provider.providers.magpie"];
+  const provider = connect({ gateway, models: [] })["provider.providers.tianshu-harness"];
   assert.equal("models" in provider, false);
   assert.equal(provider.models, undefined);
 });
@@ -172,14 +172,14 @@ test("keeps a model's capacity under rivet's names for it", () => {
   const provider = connect({
     gateway,
     models: [{ id: "rylive/deepseek-flash", name: "DeepSeek Flash", context: 1000000, output: 393216, images: true }],
-  })["provider.providers.magpie"];
+  })["provider.providers.tianshu-harness"];
   assert.deepEqual(provider.models, [
     { id: "rylive/deepseek-flash", contextWindow: 1000000, maxTokens: 393216, supportsVision: true },
   ]);
 });
 
 test("writes no capacity it does not know", () => {
-  const provider = connect({ gateway, models: [{ id: "opaque/model" }] })["provider.providers.magpie"];
+  const provider = connect({ gateway, models: [{ id: "opaque/model" }] })["provider.providers.tianshu-harness"];
   assert.deepEqual(provider.models, [{ id: "opaque/model" }]);
 });
 
@@ -189,7 +189,7 @@ test("a capacity magpie gives as zero is not written as zero", () => {
   const provider = connect({
     gateway,
     models: [{ id: "rylive/deepseek-flash", context: 0, output: 0, images: false }],
-  })["provider.providers.magpie"];
+  })["provider.providers.tianshu-harness"];
   assert.deepEqual(provider.models, [{ id: "rylive/deepseek-flash" }]);
 });
 
@@ -197,7 +197,7 @@ test("leaves out a model that is not one", () => {
   const provider = connect({
     gateway,
     models: [null, {}, { id: "" }, { id: 42 }, { id: "a/one", context: 1000 }],
-  })["provider.providers.magpie"];
+  })["provider.providers.tianshu-harness"];
   assert.deepEqual(provider.models, [{ id: "a/one", contextWindow: 1000 }]);
 });
 
@@ -208,7 +208,7 @@ test("lists every model magpie offers again, since the provider is written whole
       { id: "a/one", context: 1000, output: 100 },
       { id: "b/two", context: 2000, output: 200 },
     ],
-  })["provider.providers.magpie"];
+  })["provider.providers.tianshu-harness"];
   assert.deepEqual(provider.models.map((m) => m.id), ["a/one", "b/two"]);
 });
 
@@ -216,7 +216,7 @@ test("carries a model's reasoning rungs over as the model spells them", () => {
   const provider = connect({
     gateway,
     models: [{ id: "auto/gpt-6.1-terra", efforts: ["none", "low", "medium", "high", "xhigh", "max", "ultra"] }],
-  })["provider.providers.magpie"];
+  })["provider.providers.tianshu-harness"];
   const capabilities = provider.models[0].capabilities;
   assert.equal(capabilities.effortFormat, "reasoning_effort");
   assert.deepEqual(capabilities.effortLevels, ["none", "low", "medium", "high", "xhigh", "max", "ultra"]);
@@ -250,7 +250,7 @@ test("a model with no reasoning rungs gets no capabilities at all", () => {
   const provider = connect({
     gateway,
     models: [{ id: "rylive/eliroot-v4.1-flash", efforts: [] }],
-  })["provider.providers.magpie"];
+  })["provider.providers.tianshu-harness"];
   assert.equal("capabilities" in provider.models[0], false);
 });
 
@@ -338,6 +338,40 @@ test("the notice names the action and then the remedy, in both languages", () =>
   assert.match(agent.notice, /新开一个会话/);
 });
 
+test("writes agent.defaultModel itself, naming a provider and model that both exist", () => {
+  // rivet refuses to load a config where provider.default names one provider
+  // and agent.defaultModel names another, or a model that provider lacks.
+  const out = connect({
+    gateway,
+    models: [{ id: "a/one", context: 1000 }, { id: "b/two", context: 2000 }],
+  });
+  const provider = out["provider.default"];
+  const picked = out["agent.defaultModel"];
+
+  assert.equal(provider, "tianshu-harness");
+  assert.ok(out[`provider.providers.${provider}`], "provider.default must name a provider that was written");
+
+  const [namedProvider, ...rest] = picked.split(":");
+  assert.equal(namedProvider, provider, "agent.defaultModel must start with provider.default");
+  const id = rest.join(":");
+  const listed = out[`provider.providers.${provider}`].models.map((m) => m.id);
+  assert.ok(listed.includes(id), `agent.defaultModel names ${id}, which the provider does not list`);
+});
+
+test("a provider with no models names no default model", () => {
+  // nothing to point at: writing agent.defaultModel here would name a model
+  // the provider does not have, which rivet then refuses to load
+  const out = connect({ gateway, models: [] });
+  assert.equal("agent.defaultModel" in out, false);
+});
+
+test("the provider key is one no earlier build has written", () => {
+  // provider-keys.json keeps a provider's models past a disconnect, and this
+  // plugin's 1.x build wrote them under "magpie". A new key starts clean.
+  assert.notEqual(connect({ gateway, models: [] })["provider.default"], "magpie");
+  assert.equal(connect({ gateway, models: [] })["provider.default"], "tianshu-harness");
+});
+
 test("refuses to point Tianshu at a gateway it was given no address or key for", () => {
   assert.throws(() => connect({ gateway: { key: "k" }, models: [] }), /no \/v1 address/);
   assert.throws(() => connect({ gateway: { v1: "http://127.0.0.1:3425/v1" }, models: [] }), /no key/);
@@ -360,6 +394,6 @@ test("every shape it writes is one rivet keeps", () => {
       { id: "opaque/model" },
       { id: "old/model", status: "deprecated", deprecationNote: "gone" },
     ],
-  })["provider.providers.magpie"];
+  })["provider.providers.tianshu-harness"];
   assertRivetShape(provider);
 });

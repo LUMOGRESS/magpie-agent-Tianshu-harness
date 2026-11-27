@@ -1,6 +1,6 @@
 {
   "name": "magpie-agent-tianshu-harness",
-  "version": "1.0.3",
+  "version": "2.0.0",
   "description": "Tianshu (天枢 / rivet harness) as a Magpie agent: pick one of Magpie's models for it from Magpie's own Agents page",
   "type": "module",
   "files": [

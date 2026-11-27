@@ -2,9 +2,19 @@
 // ~/.rivet/config.json, in two keys together: `provider.default` names the
 // provider, and `agent.defaultModel` is "<providerKey>:<modelId>", where the
 // id must be one of that provider's own `models`. So magpie goes in under a
-// provider of its own, "magpie", whose baseUrl is the gateway's /v1, and
-// `agent.defaultModel` is that provider key plus the id this module's
-// `prefix` puts in front of.
+// provider of its own, "tianshu-harness", whose baseUrl is the gateway's /v1,
+// and `agent.defaultModel` is that provider key plus the model id.
+//
+// Why not the obvious key, "magpie": Tianshu keeps a provider's model list a
+// second time, in provider-keys.json beside this file, and a list only ever
+// grows there — models written under a key outlive the plugin that wrote them
+// and survive a disconnect. Measured on a live 3.37 install: two models
+// written, then the config cut to one, and provider-keys.json still held both,
+// left selectable and failing at the gateway. An earlier build of this plugin
+// (1.x) wrote a provider called "magpie", so anyone who ran it has a stale
+// entry under that name. A fresh key nobody has written before starts clean.
+// An install that never ran the 1.x build has no entry under either name, so
+// the new key costs nothing there.
 //
 // Everything below is written in rivet's names, not magpie's: rivet reads
 // `contextWindow` / `maxTokens` / `supportsVision`, while magpie hands over
@@ -25,8 +35,11 @@
 // before its first write and puts it back when the switch goes off
 // (internal/agent/agent.go), so nothing here has to keep a copy.
 
-const PROVIDER_KEY = "magpie";
-const MODEL_PREFIX = "magpie:";
+const PROVIDER_KEY = "tianshu-harness";
+// magpie writes `prefix` + the model id into agent.defaultModel. This module
+// writes that key itself (see connect), so the prefix is only what magpie's
+// own picker shows; it matches the provider key so the two never disagree.
+const MODEL_PREFIX = "tianshu-harness:";
 
 // rivet's own ladder has five rungs (off / low / medium / high / max) and a
 // provider may advertise more or spell them differently. Rather than dropping
@@ -174,8 +187,10 @@ export function connect({ gateway, models } = {}) {
   // again: a model picked in Tianshu since is one of magpie's own.
   const list = (models ?? []).map(modelEntry).filter(Boolean);
 
+  // "Tianshu Harness" reads better than the key in Tianshu's provider list;
+  // the key stays the slug rivet matches on.
   const provider = {
-    name: "magpie",
+    name: "Tianshu Harness",
     baseUrl: gateway.v1,
     protocol: "openai",
     apiKey: gateway.key,
@@ -184,10 +199,19 @@ export function connect({ gateway, models } = {}) {
   // that can serve nothing
   if (list.length) provider.models = list;
 
-  return {
+  const out = {
     "provider.default": PROVIDER_KEY,
     [`provider.providers.${PROVIDER_KEY}`]: provider,
   };
+
+  // The two keys must agree: agent.defaultModel may name neither a provider
+  // that isn't there nor a model that provider lacks, and rivet refuses to
+  // load a config where they disagree. Writing it here rather than leaving it
+  // to magpie's `prefix` keeps them in step no matter what magpie does with
+  // the picker — and a provider with no models leaves it out entirely.
+  if (list.length) out["agent.defaultModel"] = `${PROVIDER_KEY}:${list[0].id}`;
+
+  return out;
 }
 
 // Tests reach these without the host ever running them.

@@ -38,15 +38,15 @@ magpie tianshu default                     # 取消接入，天枢恢复原样
 
 ## 它做了什么
 
-在 `~/.rivet/config.json` 里写入一个 magpie 供应商，并把天枢的起始模型指向它：
+在 `~/.rivet/config.json` 里写入一个供应商，并把天枢的起始模型指向它：
 
 ```json
 {
   "provider": {
-    "default": "magpie",
+    "default": "tianshu-harness",
     "providers": {
-      "magpie": {
-        "name": "magpie",
+      "tianshu-harness": {
+        "name": "Tianshu Harness",
         "baseUrl": "http://127.0.0.1:3425/v1",
         "protocol": "openai",
         "apiKey": "<magpie 的网关密钥>",
@@ -68,7 +68,7 @@ magpie tianshu default                     # 取消接入，天枢恢复原样
       }
     }
   },
-  "agent": { "defaultModel": "magpie:group/gemini" }
+  "agent": { "defaultModel": "tianshu-harness:group/gemini" }
 }
 ```
 
@@ -90,6 +90,8 @@ magpie tianshu default                     # 取消接入，天枢恢复原样
 ## 注意事项
 
 **同一台机器上只装一个天枢插件。** 所有 magpie 的天枢插件都使用同一个 agent id `tianshu`，装了两个也只有其中一个生效，另一个会一直挂着但不起作用。
+
+**天枢会记住用过的模型列表，减不掉。** 天枢在自己的 `provider-keys.json` 里另存一份供应商的模型清单，这份清单只增不减——magpie 那边拿掉了某个模型，天枢的列表里仍留着它，重启和重新接线都清不掉，选中它会报 404。这是天枢自身的行为，插件无法修改。插件能做的只是不复用旧版本的供应商标识，让升级后不出现两条重叠的列表。
 
 **天枢的设置文件在** `~/.rivet/config.json`。这条路径取决于天枢怎么装的，想确认就直接问 magpie：
 
