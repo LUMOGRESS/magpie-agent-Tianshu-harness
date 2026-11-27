@@ -15,8 +15,8 @@ import {
 import { _internal, agent, connect, CONTROL_DIR, CONTROL_FILE } from "./tianshu.agent.js";
 
 const gateway = {
-  url: "http://127.0.0.1:3425",
-  v1: "http://127.0.0.1:3425/v1",
+  url: "http://127.0.0.1:4321",
+  v1: "http://127.0.0.1:4321/v1",
   key: "magpie-tianshu",
 };
 
@@ -160,11 +160,11 @@ test("package.json declares both moejs agent and Bun companion main cleanly", as
 test("connect() emits clean control payload with top-level gatewayKey for Magpie wiring mark", () => {
   const out = connect({
     gateway,
-    model: { id: "trae-cn/qwen3.8-flash-max", context: 128000, output: 16384, images: true },
+    model: { id: "provider-a/model-pro", context: 128000, output: 16384, images: true },
     models: [
       {
-        id: "trae-cn/qwen3.8-flash-max",
-        name: "Qwen",
+        id: "provider-a/model-pro",
+        name: "Model Pro",
         magpie_label: "noisy",
         context: 128000,
         output: 16384,
@@ -172,7 +172,7 @@ test("connect() emits clean control payload with top-level gatewayKey for Magpie
         efforts: ["low", "high", "low"],
         pricing: { prompt: "0.000001", completion: "0.000005" },
       },
-      { id: "trae-cn/qwen3.8-flash-max", context: 999 }, // duplicate ignored
+      { id: "provider-a/model-pro", context: 999 }, // duplicate ignored
       null,
       {},
       { id: "" },
@@ -183,7 +183,7 @@ test("connect() emits clean control payload with top-level gatewayKey for Magpie
   assert.equal(out.gatewayKey, gateway.key);
   assert.equal(out.models.length, 1);
   assert.deepEqual(out.models[0], {
-    id: "trae-cn/qwen3.8-flash-max",
+    id: "provider-a/model-pro",
     context: 128000,
     output: 16384,
     images: true,
@@ -191,7 +191,7 @@ test("connect() emits clean control payload with top-level gatewayKey for Magpie
     pricing: { prompt: "0.000001", completion: "0.000005" },
   });
   assert.deepEqual(out.modelInfo, {
-    id: "trae-cn/qwen3.8-flash-max",
+    id: "provider-a/model-pro",
     context: 128000,
     output: 16384,
     images: true,
@@ -212,50 +212,50 @@ test("connect() validates gateway and models list before writing", () => {
 });
 
 test("channelKeyFor splits models by subscription software and never uses literal 'magpie'", () => {
-  assert.equal(channelKeyFor("trae-cn/qwen3.8-flash-max"), "trae-cn-magpie");
-  assert.equal(channelKeyFor("zcode/GLM-5.3-Flash"), "zcode-magpie");
-  assert.equal(channelKeyFor("group/gemini"), "group-magpie");
-  assert.equal(channelKeyFor("auto/glm-5.3-flash"), AUTO_CHANNEL);
-  assert.equal(channelKeyFor("AUTO/deepseek-v4"), AUTO_CHANNEL);
+  assert.equal(channelKeyFor("provider-a/model-pro"), "provider-a-magpie");
+  assert.equal(channelKeyFor("provider-b/model-fast"), "provider-b-magpie");
+  assert.equal(channelKeyFor("group/model-1"), "group-magpie");
+  assert.equal(channelKeyFor("auto/default"), AUTO_CHANNEL);
+  assert.equal(channelKeyFor("AUTO/fast"), AUTO_CHANNEL);
   assert.equal(channelKeyFor("bare-model"), AUTO_CHANNEL);
-  assert.equal(channelKeyFor("Work_Buddy/model-1"), "work-buddy-magpie");
+  assert.equal(channelKeyFor("Team_Hub/model-1"), "team-hub-magpie");
   assert.equal(channelKeyFor("magpie/foo"), "magpie-magpie");
   assert.notEqual(channelKeyFor("magpie/foo"), "magpie");
-  assert.equal(isManagedChannelKey("trae-cn-magpie"), true);
+  assert.equal(isManagedChannelKey("provider-a-magpie"), true);
   assert.equal(isManagedChannelKey("auto-magpie"), true);
   assert.equal(isManagedChannelKey("magpie"), false);
   assert.equal(isManagedChannelKey("-magpie"), false);
 });
 
 test("endpointNetworkPolicyFor authorizes loopback and private LAN gateways but not public URLs", () => {
-  assert.deepEqual(endpointNetworkPolicyFor("http://127.0.0.1:3425/v1"), {
-    origin: "http://127.0.0.1:3425",
+  assert.deepEqual(endpointNetworkPolicyFor("http://127.0.0.1:4321/v1"), {
+    origin: "http://127.0.0.1:4321",
     allowPrivateNetwork: true,
   });
-  assert.deepEqual(endpointNetworkPolicyFor("http://localhost:3425/v1"), {
-    origin: "http://localhost:3425",
+  assert.deepEqual(endpointNetworkPolicyFor("http://localhost:4321/v1"), {
+    origin: "http://localhost:4321",
     allowPrivateNetwork: true,
   });
-  assert.deepEqual(endpointNetworkPolicyFor("http://[::1]:3425/v1"), {
-    origin: "http://[::1]:3425",
+  assert.deepEqual(endpointNetworkPolicyFor("http://[::1]:4321/v1"), {
+    origin: "http://[::1]:4321",
     allowPrivateNetwork: true,
   });
-  assert.deepEqual(endpointNetworkPolicyFor("http://[::ffff:127.0.0.1]:3425/v1"), {
-    origin: "http://[::ffff:7f00:1]:3425",
+  assert.deepEqual(endpointNetworkPolicyFor("http://[::ffff:127.0.0.1]:4321/v1"), {
+    origin: "http://[::ffff:7f00:1]:4321",
     allowPrivateNetwork: true,
   });
-  assert.deepEqual(endpointNetworkPolicyFor("http://192.168.1.20:3425/v1"), {
-    origin: "http://192.168.1.20:3425",
+  assert.deepEqual(endpointNetworkPolicyFor("http://192.168.1.20:4321/v1"), {
+    origin: "http://192.168.1.20:4321",
     allowPrivateNetwork: true,
   });
   // fc0::1 is 0fc0::1 (NOT fc00::/7); must not be misclassified as private
-  assert.equal(endpointNetworkPolicyFor("http://[fc0::1]:3425/v1"), undefined);
+  assert.equal(endpointNetworkPolicyFor("http://[fc0::1]:4321/v1"), undefined);
   assert.equal(endpointNetworkPolicyFor("https://gateway.example.com/v1"), undefined);
 });
 
 test("buildTianshuModel maps capacities, clamps maxTokens, converts prices, and handles reasoning rungs", () => {
   const model = buildTianshuModel({
-    id: "dgemini/gemini-4-neon",
+    id: "provider-c/model-vision",
     context: 100000,
     output: 200000, // exceeds context -> must clamp
     images: true,
@@ -271,7 +271,7 @@ test("buildTianshuModel maps capacities, clamps maxTokens, converts prices, and 
   });
 
   assert.deepEqual(model, {
-    id: "dgemini/gemini-4-neon",
+    id: "provider-c/model-vision",
     contextWindow: 100000,
     maxTokens: 100000,
     supportsVision: true,
@@ -311,36 +311,36 @@ test("buildTianshuDesired splits channels cleanly and preserves exact selected m
   const control = {
     ...connect({
       gateway,
-      model: { id: "zcode/GLM-5.3-Flash", context: 200000, output: 65536 },
+      model: { id: "provider-b/model-fast", context: 200000, output: 65536 },
       models: [
         {
-          id: "auto/gpt-6.1-terra",
+          id: "auto/model-large",
           context: 922000,
           output: 128000,
           images: true,
           efforts: ["none", "low", "medium", "high", "xhigh", "max", "ultra"],
           pricing: { prompt: "0.000001", completion: "0.000005" },
         },
-        { id: "trae-cn/qwen3.8-flash-max", context: 1000000, output: 65536, efforts: ["low", "high"] },
-        { id: "zcode/GLM-5.3-Flash", context: 200000, output: 65536 },
+        { id: "provider-a/model-pro", context: 1000000, output: 65536, efforts: ["low", "high"] },
+        { id: "provider-b/model-fast", context: 200000, output: 65536 },
       ],
     }),
-    model: "zcode/GLM-5.3-Flash",
+    model: "provider-b/model-fast",
   };
 
   const desired = buildTianshuDesired(control);
-  assert.deepEqual(desired.channelKeys, ["auto-magpie", "trae-cn-magpie", "zcode-magpie"]);
-  assert.equal(desired.defaultProvider, "zcode-magpie");
-  assert.equal(desired.defaultModel, "zcode-magpie:zcode/GLM-5.3-Flash");
+  assert.deepEqual(desired.channelKeys, ["auto-magpie", "provider-a-magpie", "provider-b-magpie"]);
+  assert.equal(desired.defaultProvider, "provider-b-magpie");
+  assert.equal(desired.defaultModel, "provider-b-magpie:provider-b/model-fast");
 
   for (const [key, provider] of Object.entries(desired.providersByKey)) {
     assertRivet4154Shape(key, provider);
   }
-  assert.deepEqual(desired.providersByKey["trae-cn-magpie"].capabilities, {
+  assert.deepEqual(desired.providersByKey["provider-a-magpie"].capabilities, {
     effortFormat: "reasoning_effort",
     reasoningSplit: true,
   });
-  assert.equal("capabilities" in desired.providersByKey["zcode-magpie"], false);
+  assert.equal("capabilities" in desired.providersByKey["provider-b-magpie"], false);
 });
 
 test("buildTianshuDesired synthesizes selected model absent from catalog without copying unrelated modelInfo", () => {
@@ -349,7 +349,7 @@ test("buildTianshuDesired synthesizes selected model absent from catalog without
     gatewayKey: gateway.key,
     model: "custom/my-route",
     modelInfo: { id: "custom/my-route", context: 128000 },
-    models: [{ id: "auto/glm-5.3-flash" }],
+    models: [{ id: "auto/default" }],
   });
 
   assert.equal(desired.defaultProvider, "custom-magpie");
@@ -365,7 +365,7 @@ test("buildTianshuDesired synthesizes selected model absent from catalog without
     gatewayKey: gateway.key,
     model: "custom/fresh-route",
     modelInfo: { id: "other/old-model", context: 999999, images: true },
-    models: [{ id: "auto/glm-5.3-flash" }],
+    models: [{ id: "auto/default" }],
   });
   assert.deepEqual(isolated.providersByKey["custom-magpie"].models, [{ id: "custom/fresh-route" }]);
 });

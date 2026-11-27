@@ -18,8 +18,8 @@ import {
 import { connect } from "./tianshu.agent.js";
 
 const gateway = {
-  url: "http://127.0.0.1:3425",
-  v1: "http://127.0.0.1:3425/v1",
+  url: "http://127.0.0.1:4321",
+  v1: "http://127.0.0.1:4321/v1",
   key: "sk-magpie-secret-v1",
 };
 
@@ -211,31 +211,31 @@ test("full 4.1.54 multi-root lifecycle: connect, Tianshu migration convergence, 
     const desktopHome = path.join(tmp, "Tianshu", "TianshuData", ".rivet");
     const cliHome = path.join(tmp, "LocalAppData", ".rivet");
 
-    // Seed Desktop 4.1.54 with realistic user config: manual "magpie", "deepseek",
+    // Seed Desktop 4.1.54 with realistic user config: manual "magpie", "custom-api",
     // null preset tombstones, MCP servers, and an existing provider-keys.json.
     const initialDesktopCfg = {
       provider: {
         default: "magpie",
         providers: {
-          deepseek: {
-            name: "deepseek",
-            keyRef: "deepseek",
-            baseUrl: "https://api.deepseek.com/v1",
+          "custom-api": {
+            name: "custom-api",
+            keyRef: "custom-api",
+            baseUrl: "https://api.example.com/v1",
             protocol: "openai",
-            models: [{ id: "deepseek-flash", contextWindow: 1000000, maxTokens: 256000 }],
+            models: [{ id: "custom-chat", contextWindow: 1000000, maxTokens: 256000 }],
             userSaved: true,
           },
           magpie: {
             name: "magpie",
             keyRef: "magpie",
-            baseUrl: "http://127.0.0.1:3425/v1",
-            endpointNetworkPolicy: { origin: "http://127.0.0.1:3425", allowPrivateNetwork: true },
+            baseUrl: "http://127.0.0.1:4321/v1",
+            endpointNetworkPolicy: { origin: "http://127.0.0.1:4321", allowPrivateNetwork: true },
             protocol: "openai",
             models: [{ id: "old/manual-model", contextWindow: 128000, maxTokens: 32000 }],
             userSaved: true,
           },
-          minimax: null,
-          claude: null,
+          "preset-a": null,
+          "preset-b": null,
         },
       },
       agent: { mode: "code", maxTurns: 200 },
@@ -244,7 +244,7 @@ test("full 4.1.54 multi-root lifecycle: connect, Tianshu migration convergence, 
     const initialDesktopPk = {
       version: 1,
       providers: {
-        deepseek: [{ id: "default", label: "default", keyRef: "deepseek", models: [{ id: "deepseek-flash" }] }],
+        "custom-api": [{ id: "default", label: "default", keyRef: "custom-api", models: [{ id: "custom-chat" }] }],
         magpie: [{ id: "default", label: "default", keyRef: "magpie", models: [{ id: "old/manual-model" }] }],
       },
     };
@@ -261,45 +261,45 @@ test("full 4.1.54 multi-root lifecycle: connect, Tianshu migration convergence, 
     writeJson(p.control, {
       ...connect({
         gateway,
-        model: { id: "trae-cn/qwen3.8-flash-max", context: 1000000, output: 65536, images: true },
+        model: { id: "provider-a/model-pro", context: 1000000, output: 65536, images: true },
         models: [
-          { id: "auto/glm-5.3-flash", context: 1048576, output: 65536, efforts: ["low", "high"] },
-          { id: "trae-cn/qwen3.8-flash-max", context: 1000000, output: 65536, images: true, efforts: ["low", "high"] },
-          { id: "zcode/GLM-5.3-Flash", context: 200000, output: 65536 },
+          { id: "auto/default", context: 1048576, output: 65536, efforts: ["low", "high"] },
+          { id: "provider-a/model-pro", context: 1000000, output: 65536, images: true, efforts: ["low", "high"] },
+          { id: "provider-b/model-fast", context: 200000, output: 65536 },
         ],
       }),
-      model: "trae-cn/qwen3.8-flash-max",
+      model: "provider-a/model-pro",
     });
 
     const first = syncBridge(p, discoverOpts);
     assert.equal(first.state, "connected");
     assert.equal(first.targets.length, 2);
-    assert.deepEqual(first.channels, ["auto-magpie", "trae-cn-magpie", "zcode-magpie"]);
+    assert.deepEqual(first.channels, ["auto-magpie", "provider-a-magpie", "provider-b-magpie"]);
 
     const dCfg1 = readJson(path.join(desktopHome, "config.json"));
-    assert.equal(dCfg1.provider.default, "trae-cn-magpie");
-    assert.equal(dCfg1.agent.defaultModel, "trae-cn-magpie:trae-cn/qwen3.8-flash-max");
-    assert.equal(dCfg1.provider.providers["trae-cn-magpie"].name, "trae-cn-magpie");
-    assert.deepEqual(dCfg1.provider.providers["trae-cn-magpie"].endpointNetworkPolicy, {
-      origin: "http://127.0.0.1:3425",
+    assert.equal(dCfg1.provider.default, "provider-a-magpie");
+    assert.equal(dCfg1.agent.defaultModel, "provider-a-magpie:provider-a/model-pro");
+    assert.equal(dCfg1.provider.providers["provider-a-magpie"].name, "provider-a-magpie");
+    assert.deepEqual(dCfg1.provider.providers["provider-a-magpie"].endpointNetworkPolicy, {
+      origin: "http://127.0.0.1:4321",
       allowPrivateNetwork: true,
     });
     // Preserves user's manual providers, null tombstones, and MCP!
     assert.equal(dCfg1.provider.providers.magpie.models[0].id, "old/manual-model");
-    assert.equal(dCfg1.provider.providers.minimax, null);
-    assert.equal(dCfg1.provider.providers.claude, null);
+    assert.equal(dCfg1.provider.providers["preset-a"], null);
+    assert.equal(dCfg1.provider.providers["preset-b"], null);
     assert.deepEqual(dCfg1.mcp, initialDesktopCfg.mcp);
 
     // CLI root synced simultaneously!
     const cCfg1 = readJson(path.join(cliHome, "config.json"));
-    assert.equal(cCfg1.provider.default, "trae-cn-magpie");
-    assert.equal(cCfg1.agent.defaultModel, "trae-cn-magpie:trae-cn/qwen3.8-flash-max");
+    assert.equal(cCfg1.provider.default, "provider-a-magpie");
+    assert.equal(cCfg1.agent.defaultModel, "provider-a-magpie:provider-a/model-pro");
 
     // Step 2: Tianshu 4.1.54 boots and migrates apiKey -> keyRef and writes provider-keys.json.
     const loaded1 = simulateTianshu4154LoadConfig(desktopHome);
-    assert.equal(loaded1.cfg.provider.providers["trae-cn-magpie"].apiKey, undefined);
-    assert.equal(loaded1.cfg.provider.providers["trae-cn-magpie"].keyRef, "trae-cn-magpie");
-    assert.deepEqual(loaded1.effectiveModels["trae-cn-magpie"], ["trae-cn/qwen3.8-flash-max"]);
+    assert.equal(loaded1.cfg.provider.providers["provider-a-magpie"].apiKey, undefined);
+    assert.equal(loaded1.cfg.provider.providers["provider-a-magpie"].keyRef, "provider-a-magpie");
+    assert.deepEqual(loaded1.effectiveModels["provider-a-magpie"], ["provider-a/model-pro"]);
 
     // Step 3: Next bridge sync MUST converge with zero rewrite (no infinite loop!).
     const cfgBeforeConverge = fs.readFileSync(path.join(desktopHome, "config.json"), "utf8");
@@ -309,18 +309,18 @@ test("full 4.1.54 multi-root lifecycle: connect, Tianshu migration convergence, 
     assert.equal(fs.readFileSync(path.join(desktopHome, "config.json"), "utf8"), cfgBeforeConverge);
     assert.equal(fs.readFileSync(path.join(desktopHome, "provider-keys.json"), "utf8"), pkBeforeConverge);
 
-    // Step 4: Magpie catalog updates (adds a new trae-cn model, drops zcode, rotates key).
+    // Step 4: Magpie catalog updates (adds a new provider-a model, drops provider-b, rotates key).
     writeJson(p.control, {
       ...connect({
         gateway: { ...gateway, key: "sk-magpie-secret-v2" },
-        model: { id: "trae-cn/deepseek-v4.1-flash", context: 1000000, output: 128000 },
+        model: { id: "provider-a/model-next", context: 1000000, output: 128000 },
         models: [
-          { id: "auto/glm-5.3-flash", context: 1048576, output: 65536, efforts: ["low", "high"] },
-          { id: "trae-cn/qwen3.8-flash-max", context: 1000000, output: 65536, images: true, efforts: ["low", "high"] },
-          { id: "trae-cn/deepseek-v4.1-flash", context: 1000000, output: 128000 },
+          { id: "auto/default", context: 1048576, output: 65536, efforts: ["low", "high"] },
+          { id: "provider-a/model-pro", context: 1000000, output: 65536, images: true, efforts: ["low", "high"] },
+          { id: "provider-a/model-next", context: 1000000, output: 128000 },
         ],
       }),
-      model: "trae-cn/deepseek-v4.1-flash",
+      model: "provider-a/model-next",
     });
 
     const updated = syncBridge(p, discoverOpts);
@@ -329,31 +329,31 @@ test("full 4.1.54 multi-root lifecycle: connect, Tianshu migration convergence, 
 
     const dCfg2 = readJson(path.join(desktopHome, "config.json"));
     const dPk2 = readJson(path.join(desktopHome, "provider-keys.json"));
-    // zcode-magpie removed from BOTH config.json and provider-keys.json!
-    assert.equal("zcode-magpie" in dCfg2.provider.providers, false);
-    assert.equal("zcode-magpie" in dPk2.providers, false);
-    // trae-cn-magpie cleared from provider-keys.json and given fresh inline apiKey without stale keyRef!
-    assert.equal("trae-cn-magpie" in dPk2.providers, false);
-    assert.equal(dCfg2.provider.providers["trae-cn-magpie"].apiKey, "sk-magpie-secret-v2");
-    assert.equal("keyRef" in dCfg2.provider.providers["trae-cn-magpie"], false);
+    // provider-b-magpie removed from BOTH config.json and provider-keys.json!
+    assert.equal("provider-b-magpie" in dCfg2.provider.providers, false);
+    assert.equal("provider-b-magpie" in dPk2.providers, false);
+    // provider-a-magpie cleared from provider-keys.json and given fresh inline apiKey without stale keyRef!
+    assert.equal("provider-a-magpie" in dPk2.providers, false);
+    assert.equal(dCfg2.provider.providers["provider-a-magpie"].apiKey, "sk-magpie-secret-v2");
+    assert.equal("keyRef" in dCfg2.provider.providers["provider-a-magpie"], false);
     // User's own providers in provider-keys.json stay completely untouched!
-    assert.deepEqual(dPk2.providers.deepseek, initialDesktopPk.providers.deepseek);
+    assert.deepEqual(dPk2.providers["custom-api"], initialDesktopPk.providers["custom-api"]);
     assert.deepEqual(dPk2.providers.magpie, initialDesktopPk.providers.magpie);
 
     // Tianshu 4.1.54 reloads -> IMMEDIATELY sees the new model (not shadowed by old provider-keys.json)!
     const loaded2 = simulateTianshu4154LoadConfig(desktopHome);
-    assert.deepEqual(loaded2.effectiveModels["trae-cn-magpie"], [
-      "trae-cn/qwen3.8-flash-max",
-      "trae-cn/deepseek-v4.1-flash",
+    assert.deepEqual(loaded2.effectiveModels["provider-a-magpie"], [
+      "provider-a/model-pro",
+      "provider-a/model-next",
     ]);
 
     // Step 5: If provider-keys.json gets stale for a managed channel, bridge detects & repairs it!
     const poisonedPk = readJson(path.join(desktopHome, "provider-keys.json"));
-    poisonedPk.providers["trae-cn-magpie"][0].models = [{ id: "trae-cn/stale-removed-model" }];
+    poisonedPk.providers["provider-a-magpie"][0].models = [{ id: "provider-a/stale-removed-model" }];
     writeJson(path.join(desktopHome, "provider-keys.json"), poisonedPk);
     const repaired = syncBridge(p, discoverOpts);
     assert.equal(repaired.targets[0].status, "synced");
-    assert.equal("trae-cn-magpie" in readJson(path.join(desktopHome, "provider-keys.json")).providers, false);
+    assert.equal("provider-a-magpie" in readJson(path.join(desktopHome, "provider-keys.json")).providers, false);
 
     // Step 6: Status file NEVER leaks gateway keys.
     const statusText = fs.readFileSync(p.status, "utf8");
@@ -369,11 +369,11 @@ test("full 4.1.54 multi-root lifecycle: connect, Tianshu migration convergence, 
     assert.equal(restoredDesktopCfg.provider.default, "magpie");
     assert.equal("defaultModel" in restoredDesktopCfg.agent, false, "originally absent agent.defaultModel must be removed");
     assert.equal("auto-magpie" in restoredDesktopCfg.provider.providers, false);
-    assert.equal("trae-cn-magpie" in restoredDesktopCfg.provider.providers, false);
+    assert.equal("provider-a-magpie" in restoredDesktopCfg.provider.providers, false);
     assert.equal("auto-magpie" in restoredDesktopPk.providers, false);
-    assert.equal("trae-cn-magpie" in restoredDesktopPk.providers, false);
-    assert.equal(restoredDesktopCfg.provider.providers.minimax, null);
-    assert.equal(restoredDesktopCfg.provider.providers.claude, null);
+    assert.equal("provider-a-magpie" in restoredDesktopPk.providers, false);
+    assert.equal(restoredDesktopCfg.provider.providers["preset-a"], null);
+    assert.equal(restoredDesktopCfg.provider.providers["preset-b"], null);
     assert.deepEqual(restoredDesktopCfg.mcp, initialDesktopCfg.mcp);
     assert.equal(fs.existsSync(p.state), false, "state.json should be removed once fully disconnected");
   } finally {
@@ -388,66 +388,66 @@ test("catalog-only refresh respects user's manual model switch inside Tianshu, a
     const rivetHome = path.join(tmp, "rivet");
     writeJson(path.join(rivetHome, "config.json"), {
       provider: {
-        default: "deepseek",
+        default: "custom-api",
         providers: {
-          deepseek: {
-            name: "deepseek",
-            baseUrl: "https://api.deepseek.com/v1",
+          "custom-api": {
+            name: "custom-api",
+            baseUrl: "https://api.example.com/v1",
             protocol: "openai",
-            models: [{ id: "deepseek-flash" }],
+            models: [{ id: "custom-chat" }],
             userSaved: true,
           },
         },
       },
-      agent: { defaultModel: "deepseek:deepseek-flash" },
+      agent: { defaultModel: "custom-api:custom-chat" },
     });
 
     const p = pathsFor({ stateDir });
     const discoverOpts = { env: { MAGPIE_TIANSHU_HOMES: rivetHome } };
 
-    // Connect with trae-cn/m1 selected
+    // Connect with provider-a/m1 selected
     writeJson(p.control, {
       ...connect({
         gateway,
-        model: { id: "trae-cn/m1" },
-        models: [{ id: "trae-cn/m1" }],
+        model: { id: "provider-a/m1" },
+        models: [{ id: "provider-a/m1" }],
       }),
-      model: "trae-cn/m1",
+      model: "provider-a/m1",
     });
     syncBridge(p, discoverOpts);
 
-    // User manually switches back to deepseek inside Tianshu while keeping Magpie channels around
+    // User manually switches back to custom-api inside Tianshu while keeping Magpie channels around
     const edited = readJson(path.join(rivetHome, "config.json"));
-    edited.provider.default = "deepseek";
-    edited.agent.defaultModel = "deepseek:deepseek-flash";
+    edited.provider.default = "custom-api";
+    edited.agent.defaultModel = "custom-api:custom-chat";
     writeJson(path.join(rivetHome, "config.json"), edited);
 
-    // Magpie background catalog refresh adds trae-cn/m2 (same selected model trae-cn/m1)
+    // Magpie background catalog refresh adds provider-a/m2 (same selected model provider-a/m1)
     writeJson(p.control, {
       ...connect({
         gateway,
-        model: { id: "trae-cn/m1" },
-        models: [{ id: "trae-cn/m1" }, { id: "trae-cn/m2" }],
+        model: { id: "provider-a/m1" },
+        models: [{ id: "provider-a/m1" }, { id: "provider-a/m2" }],
       }),
-      model: "trae-cn/m1",
+      model: "provider-a/m1",
     });
     syncBridge(p, discoverOpts);
 
     const afterRefresh = readJson(path.join(rivetHome, "config.json"));
-    assert.equal(afterRefresh.provider.default, "deepseek");
-    assert.equal(afterRefresh.agent.defaultModel, "deepseek:deepseek-flash");
+    assert.equal(afterRefresh.provider.default, "custom-api");
+    assert.equal(afterRefresh.agent.defaultModel, "custom-api:custom-chat");
     assert.deepEqual(
-      afterRefresh.provider.providers["trae-cn-magpie"].models.map((m) => m.id),
-      ["trae-cn/m1", "trae-cn/m2"],
+      afterRefresh.provider.providers["provider-a-magpie"].models.map((m) => m.id),
+      ["provider-a/m1", "provider-a/m2"],
     );
 
-    // Manual restoreBridge cleans managed channels while leaving deepseek intact
+    // Manual restoreBridge cleans managed channels while leaving custom-api intact
     const res = restoreBridge(p, discoverOpts);
     assert.equal(res.state, "disconnected");
     const afterRestore = readJson(path.join(rivetHome, "config.json"));
-    assert.equal("trae-cn-magpie" in afterRestore.provider.providers, false);
-    assert.equal(afterRestore.provider.default, "deepseek");
-    assert.equal(afterRestore.agent.defaultModel, "deepseek:deepseek-flash");
+    assert.equal("provider-a-magpie" in afterRestore.provider.providers, false);
+    assert.equal(afterRestore.provider.default, "custom-api");
+    assert.equal(afterRestore.agent.defaultModel, "custom-api:custom-chat");
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -458,7 +458,7 @@ test("inspectBridge is read-only and reports discovered targets accurately", () 
   try {
     const stateDir = path.join(tmp, "magpie-tianshu");
     const rivetHome = path.join(tmp, "rivet");
-    writeJson(path.join(rivetHome, "config.json"), { provider: { default: "deepseek", providers: {} } });
+    writeJson(path.join(rivetHome, "config.json"), { provider: { default: "custom-api", providers: {} } });
     const p = pathsFor({ stateDir });
     const info = inspectBridge(p, { env: { MAGPIE_TIANSHU_HOMES: rivetHome } });
     assert.equal(info.detected, true);
@@ -482,7 +482,7 @@ test("pending journal recovers cleanly after an interrupted commit", () => {
     const stateDir = path.join(tmp, "state");
     const rivetHome = path.join(tmp, "rivet");
     const configPath = path.join(rivetHome, "config.json");
-    const before = JSON.stringify({ provider: { default: "deepseek", providers: {} } }, null, 2) + "\n";
+    const before = JSON.stringify({ provider: { default: "custom-api", providers: {} } }, null, 2) + "\n";
     const after = JSON.stringify({ provider: { default: "auto-magpie", providers: {} } }, null, 2) + "\n";
     fs.mkdirSync(rivetHome, { recursive: true });
     fs.writeFileSync(configPath, before, "utf8");
