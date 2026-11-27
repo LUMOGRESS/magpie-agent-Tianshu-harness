@@ -5,7 +5,7 @@
   "type": "module",
   "main": "./index.mjs",
   "bin": {
-    "magpie-tianshu": "./cli.mjs"
+    "magpie-tianshu": "cli.mjs"
   },
   "engines": {
     "node": ">=20"

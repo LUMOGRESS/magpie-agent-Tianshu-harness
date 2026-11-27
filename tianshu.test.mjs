@@ -136,7 +136,7 @@ test("package.json declares both moejs agent and Bun companion main cleanly", as
   const pkg = await readFile(new URL("./package.json", import.meta.url), "utf8").then(JSON.parse);
   assert.equal(pkg.magpie.agent, "./tianshu.agent.js");
   assert.equal(pkg.main, "./index.mjs");
-  assert.equal(pkg.bin["magpie-tianshu"], "./cli.mjs");
+  assert.equal(pkg.bin["magpie-tianshu"], "cli.mjs");
   assert.equal(pkg.dependencies, undefined);
 
   assert.match(pkg.magpie.icon, /^data:image\/svg\+xml;base64,/);
