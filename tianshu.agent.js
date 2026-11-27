@@ -1,77 +1,31 @@
-// Tianshu (天枢 / rivet harness) picks the model it starts on from
-// ~/.rivet/config.json, in two keys together: `provider.default` names the
-// provider, and `agent.defaultModel` is "<providerKey>:<modelId>", where the
-// id must be one of that provider's own `models`. So magpie goes in under a
-// provider of its own, "tianshu-harness", whose baseUrl is the gateway's /v1,
-// and `agent.defaultModel` is that provider key plus the model id.
+// Tianshu (天枢 / rivet harness 4.1.54+) agent descriptor for Magpie.
 //
-// Why not the obvious key, "magpie": Tianshu keeps a provider's model list a
-// second time, in provider-keys.json beside this file, and a list only ever
-// grows there — models written under a key outlive the plugin that wrote them
-// and survive a disconnect. Measured on a live 3.37 install: two models
-// written, then the config cut to one, and provider-keys.json still held both,
-// left selectable and failing at the gateway. An earlier build of this plugin
-// (1.x) wrote a provider called "magpie", so anyone who ran it has a stale
-// entry under that name. A fresh key nobody has written before starts clean.
-// An install that never ran the 1.x build has no entry under either name, so
-// the new key costs nothing there.
+// This module runs inside Magpie's moejs sandbox: no Node APIs, no external
+// imports. Why it writes a neutral control JSON instead of editing
+// ~/.rivet/config.json directly:
 //
-// Everything below is written in rivet's names, not magpie's: rivet reads
-// `contextWindow` / `maxTokens` / `supportsVision`, while magpie hands over
-// `context` / `output` / `images`. Prices cross over the other way round —
-// magpie quotes dollars per *token*, rivet books dollars per *million*
-// tokens, which is what perMillion() multiplies out. A capacity magpie does
-// not know is left out rather than written as 0: rivet infers a missing size
-// from the model id, but reads 0 as "no budget at all".
+// 1. Tianshu 4.1.54+ does NOT store its config at ~/.rivet/config.json on
+//    Windows. Its resolution order is:
+//      RIVET_CONFIG_PATH / RIVET_HOME
+//      > Desktop portable mode (<installDir>/TianshuData/.rivet)
+//      > Desktop launcher.json (rivetHome)
+//      > Platform default (%LOCALAPPDATA%\.rivet on Windows, ~/.rivet on Unix)
+//    A static moejs path string cannot discover Desktop portable dirs,
+//    launcher.json, or synchronize both Desktop and CLI roots.
+//
+// 2. Tianshu 4.1.54+ freezes a provider's model pool into provider-keys.json
+//    on first loadConfig() and reads contractModels() from provider-keys.json
+//    thereafter, ignoring subsequent changes to provider.models in config.json.
+//    The companion Bun bridge (index.mjs / bridge.mjs) keeps both config.json
+//    and provider-keys.json synchronized across every active Tianshu root.
+//
+// 3. Declaring `model: "model"` with no static `prefix` in this control file
+//    keeps Magpie's Agents-page model picker and `magpie tianshu <model>`
+//    working while letting the companion bridge split providers cleanly by
+//    subscription software (<software>-magpie / auto-magpie).
 
-//
-// Why this file and not one of magpie's own, as agent-kimi-desktop and
-// agent-nanobot do: those agents read a config file magpie can point them at.
-// Tianshu does not — `RIVET_CONFIG_PATH` exists, but only a launcher can set
-// it, and magpie's agent plugins can write files, not environment. So the two
-// keys Tianshu selects its model with are written where Tianshu reads them,
-// in Tianshu's own schema, and every other key in that file is left alone.
-// magpie's own Unwire contract is the safety net: it stashes what a field had
-// before its first write and puts it back when the switch goes off
-// (internal/agent/agent.go), so nothing here has to keep a copy.
-
-const PROVIDER_KEY = "tianshu-harness";
-// magpie writes `prefix` + the model id into agent.defaultModel. This module
-// writes that key itself (see connect), so the prefix is only what magpie's
-// own picker shows; it matches the provider key so the two never disagree.
-const MODEL_PREFIX = "tianshu-harness:";
-
-// rivet's own ladder has five rungs (off / low / medium / high / max) and a
-// provider may advertise more or spell them differently. Rather than dropping
-// rungs it has no name for, rivet maps a rung through "effortCap" — which is
-// how Tianshu's own /models probe handles it too (src/api/model-probe-enrichment.ts):
-// the provider's list goes over as-is, and the odd rungs get a wire spelling
-// beside them.
-//
-// reasoningSplit is declared here for every reasoning model, because magpie's
-// gateway answers exactly the way the split protocol expects: confirmed live
-// against three upstreams (auto/glm-5.3-flash, trae-cn/qwen3.8-flash-max,
-// dgemini/gemini-4-neon) — each returned `reasoning_content` (or a plain
-// `content` when the model had nothing to think about) and none rejected
-// `reasoning_split: true`. Without the flag rivet never reads that field, so a
-// model that fills `reasoning_content` and leaves `content` empty — which
-// glm-5.3-flash does, 718 chars of thinking and 0 chars of answer — reached
-// Tianshu as an empty reply.
-function reasoningCapabilities(efforts) {
-  if (!Array.isArray(efforts)) return undefined;
-  const levels = [...new Set(efforts.filter((e) => typeof e === "string" && e))];
-  if (!levels.length) return undefined;
-  const effortCap = {};
-  if (levels.includes("xhigh") && !levels.includes("max")) effortCap.max = "xhigh";
-  if (levels.includes("minimal") && !levels.includes("low")) effortCap.low = "minimal";
-  return {
-    // an OpenAI-compatible endpoint carries the rung in reasoning_effort
-    effortFormat: "reasoning_effort",
-    effortLevels: levels,
-    reasoningSplit: true,
-    ...(Object.keys(effortCap).length ? { effortCap } : {}),
-  };
-}
+export const CONTROL_DIR = "~/.config/magpie-tianshu";
+export const CONTROL_FILE = "~/.config/magpie-tianshu/connection.json";
 
 // Tianshu's own app-icon.svg (Tianshu-harness/docs/brand/assets/), inlined
 // so magpie draws it with no network. Declared on both the package
@@ -83,136 +37,101 @@ const ICON = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcv
 export const agent = {
   id: "tianshu",
   name: "天枢 Tianshu",
-  // Tianshu is a harness, not a bare CLI: `tianshu-harness` puts `tianshu`
-  // (the TUI/desktop/VS Code entry point) and `rivet` (the same binary under
-  // its older name) on PATH. `dir` is the second signal magpie accepts, and
-  // 19 of the 20 agent packages in this community ship one — deepzora (the
-  // closest relative, a harness with its own desktop app) declares
-  // "~/.deepzora" beside its bin. Tianshu's folder is ~/.rivet on Unix and
-  // %LOCALAPPDATA%\.rivet on Windows; the Unix spelling is the one magpie
-  // expands, and Windows resolves the same way for both.
+  // `bin` detects Tianshu CLI on PATH; `dir` receives a presence file from
+  // the Bun companion bridge whenever Tianshu Desktop 4.1.54+ or CLI is
+  // installed, so Desktop-only Windows installs are also detected cleanly.
   bin: "tianshu",
-  dir: "~/.rivet",
+  dir: CONTROL_DIR,
   aliases: ["rivet"],
-  config: "~/.rivet/config.json",
+  config: CONTROL_FILE,
   format: "json",
-  // magpie writes this module's prefix plus its model id, as rivet spells it.
-  model: "agent.defaultModel",
-  prefix: MODEL_PREFIX,
+  model: "model",
   icon: ICON,
-  // rivet sends "Tianshu/1.0 (terminal coding agent)" by default; usage
-  // groups Tianshu's requests by these words of that User-Agent.
+  // rivet sends "Tianshu/1.0 (terminal coding agent)" by default
   ua: ["tianshu", "rivet"],
-  // agent-kilo's notice is the pattern: name the action, then the remedy.
-  // Tianshu reads ~/.rivet/config.json when a session starts, so a running
-  // session keeps the model it began on.
   notice:
-    "Tianshu reads its settings when a session starts: restart it, or open a new session, to use the new model. 天枢在新会话开始时才读取设置：重启天枢或新开一个会话后生效。",
+    "Keep Magpie running so the bridge syncs Tianshu 4.1.54+ (Desktop & CLI). Reopen Tianshu's model picker or start a new session to apply changes. 保持 Magpie 运行以便同步天枢 4.1.54+（桌面端与 CLI）；重新打开模型列表或新开会话后生效。",
 };
 
-/** A token count magpie actually knows; 0 and non-integers mean "unknown". */
-function tokens(value) {
+/** Positive integer token limit; 0 and non-integers mean unknown. */
+function positiveInt(value) {
   return Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
-/** magpie's dollars per token as rivet's dollars per million tokens. */
-function perMillion(value) {
-  const n = typeof value === "string" ? Number(value) : value;
-  if (!Number.isFinite(n) || n < 0) return undefined;
-  // 0.000001 * 1e6 lands on 1.0000000000000002; toPrecision keeps the cents
-  // magpie actually sent instead of that artefact.
-  return Number((n * 1e6).toPrecision(12));
-}
-
-/** One of magpie's models, as a rivet model entry — or undefined if it has no id. */
-function modelEntry(model) {
-  if (!model || typeof model.id !== "string" || !model.id) return undefined;
-
-  const entry = { id: model.id };
-
-  const context = tokens(model.context);
-  if (context !== undefined) entry.contextWindow = context;
-  const output = tokens(model.output);
-  if (output !== undefined) entry.maxTokens = output;
-  // rivet declares image input per model, and only on an explicit yes.
-  if (model.images === true) entry.supportsVision = true;
-
-  // rivet's ladder is five rungs; rungs past it go over with a wire spelling beside them
-  const capabilities = reasoningCapabilities(model.efforts);
-  if (capabilities) entry.capabilities = capabilities;
-
-  // rivet keeps prices per million tokens under its own, shorter names; each
-  // one magpie knows goes over, and the ones it does not stay absent.
-  if (model.pricing && typeof model.pricing === "object") {
-    const pricing = {};
-    const input = perMillion(model.pricing.prompt);
-    if (input !== undefined) pricing.input = input;
-    const out = perMillion(model.pricing.completion);
-    if (out !== undefined) pricing.output = out;
-    const cacheRead = perMillion(model.pricing.input_cache_read);
-    if (cacheRead !== undefined) pricing.cacheRead = cacheRead;
-    const cacheWrite = perMillion(model.pricing.input_cache_write);
-    if (cacheWrite !== undefined) pricing.cacheWrite = cacheWrite;
-    if (Object.keys(pricing).length) entry.pricing = pricing;
+/** Keeps only the Magpie model fields the companion bridge consumes. */
+function normalizeModel(model) {
+  if (!model || typeof model !== "object" || typeof model.id !== "string" || !model.id.trim()) {
+    return undefined;
   }
 
-  // a model magpie has retired is flagged rather than silently offered
+  const out = { id: model.id.trim() };
+
+  const context = positiveInt(model.context);
+  if (context !== undefined) out.context = context;
+  const output = positiveInt(model.output);
+  if (output !== undefined) out.output = output;
+  if (model.images === true) out.images = true;
+
+  if (Array.isArray(model.efforts)) {
+    const efforts = [...new Set(model.efforts.filter((e) => typeof e === "string" && e.trim()).map((e) => e.trim()))];
+    if (efforts.length) out.efforts = efforts;
+  }
+
+  if (model.pricing && typeof model.pricing === "object" && !Array.isArray(model.pricing)) {
+    const pricing = {};
+    for (const key of ["prompt", "completion", "input_cache_read", "input_cache_write"]) {
+      const raw = model.pricing[key];
+      if (raw === null || raw === undefined || typeof raw === "boolean") continue;
+      if (typeof raw === "string" && raw.trim() === "") continue;
+      const n = typeof raw === "string" ? Number(raw.trim()) : raw;
+      if (typeof n === "number" && Number.isFinite(n) && n >= 0) pricing[key] = raw;
+    }
+    if (Object.keys(pricing).length) out.pricing = pricing;
+  }
+
   if (model.status === "deprecated") {
-    entry.deprecated = true;
-    if (typeof model.deprecationNote === "string" && model.deprecationNote) {
-      entry.deprecationNote = model.deprecationNote;
+    out.status = "deprecated";
+    if (typeof model.deprecationNote === "string" && model.deprecationNote.trim()) {
+      out.deprecationNote = model.deprecationNote.trim();
     }
   }
-
-  return entry;
-}
-
-export function connect({ gateway, models } = {}) {
-  // A gateway missing either half wires Tianshu to nothing while leaving its
-  // config pointing somewhere: fail before writing, not after.
-  if (!gateway || typeof gateway.v1 !== "string" || !gateway.v1) {
-    throw new Error("Magpie's gateway gave Tianshu no /v1 address to send requests to.");
-  }
-  if (typeof gateway.key !== "string" || !gateway.key) {
-    throw new Error("Magpie's gateway gave Tianshu no key to send requests with.");
-  }
-  // `models` absent is fine (a gateway with none yet); `models` present but
-  // not a list means magpie changed the hand-off, and writing a provider with
-  // no models would leave Tianshu with an empty picker and no explanation.
-  if (models !== undefined && models !== null && !Array.isArray(models)) {
-    throw new Error("Magpie handed Tianshu's connect() a model list that is not a list; nothing was written.");
-  }
-
-  // The provider is written whole, so every model magpie offers is listed
-  // again: a model picked in Tianshu since is one of magpie's own.
-  const list = (models ?? []).map(modelEntry).filter(Boolean);
-
-  // "Tianshu Harness" reads better than the key in Tianshu's provider list;
-  // the key stays the slug rivet matches on.
-  const provider = {
-    name: "Tianshu Harness",
-    baseUrl: gateway.v1,
-    protocol: "openai",
-    apiKey: gateway.key,
-  };
-  // no models rather than an empty list, which rivet reads as a provider
-  // that can serve nothing
-  if (list.length) provider.models = list;
-
-  const out = {
-    "provider.default": PROVIDER_KEY,
-    [`provider.providers.${PROVIDER_KEY}`]: provider,
-  };
-
-  // The two keys must agree: agent.defaultModel may name neither a provider
-  // that isn't there nor a model that provider lacks, and rivet refuses to
-  // load a config where they disagree. Writing it here rather than leaving it
-  // to magpie's `prefix` keeps them in step no matter what magpie does with
-  // the picker — and a provider with no models leaves it out entirely.
-  if (list.length) out["agent.defaultModel"] = `${PROVIDER_KEY}:${list[0].id}`;
 
   return out;
 }
 
-// Tests reach these without the host ever running them.
-export const _internal = { modelEntry, perMillion, reasoningCapabilities };
+export function connect({ gateway, model, models } = {}) {
+  if (!gateway || typeof gateway.v1 !== "string" || !gateway.v1.trim()) {
+    throw new Error("Magpie's gateway gave Tianshu no /v1 address to send requests to.");
+  }
+  if (typeof gateway.key !== "string" || !gateway.key.trim()) {
+    throw new Error("Magpie's gateway gave Tianshu no key to send requests with.");
+  }
+  if (models !== undefined && models !== null && !Array.isArray(models)) {
+    throw new Error("Magpie handed Tianshu's connect() a model list that is not a list; nothing was written.");
+  }
+
+  const seen = new Set();
+  const normalizedModels = [];
+  for (const item of models ?? []) {
+    const entry = normalizeModel(item);
+    if (!entry || seen.has(entry.id)) continue;
+    seen.add(entry.id);
+    normalizedModels.push(entry);
+  }
+
+  const out = {
+    schemaVersion: 1,
+    baseURL: gateway.v1.trim(),
+    // Top-level string equal to gateway.key so Magpie's plugged.go records
+    // `st.Mark = "gatewayKey"` and tracks wiring status accurately.
+    gatewayKey: gateway.key,
+    models: normalizedModels,
+  };
+
+  const selected = normalizeModel(model);
+  if (selected) out.modelInfo = selected;
+
+  return out;
+}
+
+export const _internal = { normalizeModel, positiveInt };

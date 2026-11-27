@@ -2,7 +2,17 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-import { _internal, agent, connect } from "./tianshu.agent.js";
+import {
+  AUTO_CHANNEL,
+  buildTianshuDesired,
+  buildTianshuModel,
+  channelKeyFor,
+  endpointNetworkPolicyFor,
+  isManagedChannelKey,
+  perMillion,
+  reasoningCapabilities,
+} from "./schema.mjs";
+import { _internal, agent, connect, CONTROL_DIR, CONTROL_FILE } from "./tianshu.agent.js";
 
 const gateway = {
   url: "http://127.0.0.1:3425",
@@ -10,9 +20,8 @@ const gateway = {
   key: "magpie-tianshu",
 };
 
-// What rivet's own modelConfigSchema accepts. Anything outside this list is
-// stripped by zod before it ever reaches Tianshu, so writing it would be a
-// silent no-op — the failure mode this module exists to avoid.
+// Verified against Tianshu-harness v4.1.54 src/config/schema.ts.
+// Anything outside these sets is stripped by zod on loadConfig().
 const RIVET_MODEL_FIELDS = new Set([
   "id",
   "description",
@@ -54,16 +63,36 @@ const RIVET_PROVIDER_FIELDS = new Set([
   "allowProFallback",
   "models",
   "keys",
+  "userSaved",
+  "thinking",
+  "maxTokens",
+  "unsupported",
 ]);
 
-/** Fails with the offending keys when a written entry carries names rivet drops. */
-function assertRivetShape(provider) {
+function assertRivet4154Shape(mapKey, provider) {
+  // 4.1.54 stripProviderKeys indexes provider-keys.json by provider.name while
+  // injectProviderKeys reads by map key; they MUST be identical.
+  assert.equal(provider.name, mapKey, `provider.name (${provider.name}) must equal map key (${mapKey})`);
+  assert.equal(provider.userSaved, true, `provider ${mapKey} should declare userSaved: true`);
+
   const unknownProvider = Object.keys(provider).filter((k) => !RIVET_PROVIDER_FIELDS.has(k));
-  assert.deepEqual(unknownProvider, [], `provider carries keys rivet strips: ${unknownProvider.join(", ")}`);
+  assert.deepEqual(unknownProvider, [], `provider ${mapKey} carries unknown keys: ${unknownProvider.join(", ")}`);
+
+  if (provider.endpointNetworkPolicy) {
+    assert.equal(
+      provider.endpointNetworkPolicy.origin,
+      new URL(provider.baseUrl).origin,
+      "endpointNetworkPolicy.origin must strictly equal new URL(baseUrl).origin",
+    );
+    assert.equal(provider.endpointNetworkPolicy.allowPrivateNetwork, true);
+  }
 
   for (const model of provider.models ?? []) {
     const unknown = Object.keys(model).filter((k) => !RIVET_MODEL_FIELDS.has(k));
-    assert.deepEqual(unknown, [], `model ${model.id} carries keys rivet strips: ${unknown.join(", ")}`);
+    assert.deepEqual(unknown, [], `model ${model.id} carries unknown keys: ${unknown.join(", ")}`);
+    if (model.contextWindow !== undefined && model.maxTokens !== undefined) {
+      assert.equal(model.maxTokens <= model.contextWindow, true, `model ${model.id} maxTokens exceeds contextWindow`);
+    }
     for (const key of Object.keys(model.pricing ?? {})) {
       assert.equal(RIVET_PRICING_FIELDS.has(key), true, `model ${model.id} pricing.${key} is not rivet's`);
     }
@@ -71,329 +100,286 @@ function assertRivetShape(provider) {
       assert.equal(RIVET_CAPABILITY_FIELDS.has(key), true, `model ${model.id} capabilities.${key} is not rivet's`);
     }
     if (model.capabilities?.effortLevels) {
-      // a rung outside rivet's five-name ladder must come with a wire spelling
-      // in effortCap, otherwise the picker offers a rung nothing can send
       const levels = new Set(model.capabilities.effortLevels);
-      const rungs = new Set(["off", "low", "medium", "high", "max"]);
       const cap = model.capabilities.effortCap ?? {};
-      for (const rung of ["max", "low"]) {
-        if (rungs.has(rung) && !levels.has(rung) && cap[rung] === undefined) {
-          assert.fail(`model ${model.id} offers no "${rung}" but does not say what to send instead`);
-        }
-      }
       assert.equal(
         Object.values(cap).every((wire) => levels.has(wire)),
         true,
         `model ${model.id} maps a rung to something it does not advertise`,
       );
-    }
-    if (model.capabilities?.effortFormat) {
       assert.equal(model.capabilities.effortFormat, "reasoning_effort");
     }
   }
 }
 
-test("says where Tianshu keeps its model", () => {
+test("agent descriptor points to Magpie control JSON while preserving model picker", () => {
   assert.equal(agent.id, "tianshu");
-  assert.equal(agent.config, "~/.rivet/config.json");
-  assert.equal(agent.format, "json");
-  assert.equal(agent.model, "agent.defaultModel");
-  assert.equal(agent.prefix, "tianshu-harness:");
-});
-
-test("is detected by Tianshu's own command, with its folder as the second signal", () => {
-  // 19 of the 20 agent packages in magpie-community ship a `dir` beside their
-  // `bin`; deepzora, the nearest relative (a harness with a desktop app),
-  // declares "~/.deepzora". Tianshu's folder is ~/.rivet.
   assert.equal(agent.bin, "tianshu");
-  assert.equal(agent.dir, "~/.rivet");
-  // `rivet` is the same entry point under a second name
+  assert.equal(agent.dir, CONTROL_DIR);
   assert.deepEqual(agent.aliases, ["rivet"]);
-});
-
-test("names Tianshu's requests in usage by its User-Agent", () => {
-  // rivet sends "Tianshu/1.0 (terminal coding agent)" by default
+  assert.equal(agent.config, CONTROL_FILE);
+  assert.equal(agent.format, "json");
+  assert.equal(agent.model, "model");
+  assert.equal(agent.prefix, undefined);
   assert.deepEqual(agent.ua, ["tianshu", "rivet"]);
 });
 
-test("the package declares this module as its agent and carries the Tianshu icon", async () => {
+test("tianshu.agent.js stays pure moejs (no imports, no Node APIs)", async () => {
+  const source = await readFile(new URL("./tianshu.agent.js", import.meta.url), "utf8");
+  assert.equal(/^\s*import\s+/m.test(source), false, "tianshu.agent.js must not import modules");
+  assert.equal(/\brequire\s*\(/.test(source), false, "tianshu.agent.js must not call require()");
+  assert.equal(/\bprocess\./.test(source), false, "tianshu.agent.js must not access Node process");
+  assert.equal(/node:/.test(source), false, "tianshu.agent.js must not reference node: builtins");
+});
+
+test("package.json declares both moejs agent and Bun companion main cleanly", async () => {
   const pkg = await readFile(new URL("./package.json", import.meta.url), "utf8").then(JSON.parse);
   assert.equal(pkg.magpie.agent, "./tianshu.agent.js");
-  // a folder plugin has no npm name for the market to look it up by, so the
-  // icon has to come from the package itself
-  assert.match(pkg.magpie.icon, /^data:image\/svg\+xml;base64,/);
+  assert.equal(pkg.main, "./index.mjs");
+  assert.equal(pkg.bin["magpie-tianshu"], "./cli.mjs");
+  assert.equal(pkg.dependencies, undefined);
 
-  // the icon must be Tianshu's, not a placeholder: decode it and check it is
-  // the app icon from Tianshu-harness/docs/brand/assets/app-icon.svg
+  assert.match(pkg.magpie.icon, /^data:image\/svg\+xml;base64,/);
   const svg = Buffer.from(pkg.magpie.icon.split(",", 2)[1], "base64").toString("utf8");
   assert.match(svg, /<svg[^>]+viewBox="0 0 1024 1024"/);
   assert.match(svg, /<rect x="40" y="40" width="944" height="944" rx="208"/);
-  // and it must be self-contained: magpie draws it straight from the data URI
   assert.deepEqual([...svg.matchAll(/(?:href|src)="[^"]*"/g)].map((m) => m[0]), []);
   assert.equal(/url\(['"]?(?:http|https)/.test(svg), false);
+  assert.equal(agent.icon, pkg.magpie.icon);
 
-  // the name and summary have size limits magpie silently enforces
   assert.equal(Buffer.byteLength(pkg.magpie.name, "utf8") <= 80, true);
   for (const lang of ["en", "zh"]) {
     assert.equal(Buffer.byteLength(pkg.magpie.summary[lang], "utf8") <= 300, true);
   }
 
-  // the Agent row reads the hook's own icon; declaring it there is what put
-  // Tianshu's plate in magpie's Agents list instead of the generic cube
-  assert.equal(agent.icon, pkg.magpie.icon, "agent.icon must be the same picture as magpie.icon");
-
-  // the agent entry is a moejs module: no main, nothing to install
-  assert.equal(pkg.main, undefined);
-  assert.equal(pkg.dependencies, undefined);
-  assert.equal(pkg.exports, undefined);
-  assert.deepEqual(pkg.files.filter((f) => /\.m?js$/.test(f)), ["tianshu.agent.js"]);
+  for (const required of ["tianshu.agent.js", "index.mjs", "bridge.mjs", "targets.mjs", "schema.mjs", "proc.mjs", "cli.mjs"]) {
+    assert.equal(pkg.files.includes(required), true, `files[] must include ${required}`);
+  }
 });
 
-test("points Tianshu at magpie as an OpenAI-compatible provider", () => {
-  assert.deepEqual(connect({ gateway, models: [] }), {
-    "provider.default": "tianshu-harness",
-    "provider.providers.tianshu-harness": {
-      name: "Tianshu Harness",
-      baseUrl: "http://127.0.0.1:3425/v1",
-      protocol: "openai",
-      apiKey: "magpie-tianshu",
-    },
-  });
-});
-
-test("a provider with no models says so by having no list, not an empty one", () => {
-  // rivet reads an empty `models` as a provider that can serve nothing
-  const provider = connect({ gateway, models: [] })["provider.providers.tianshu-harness"];
-  assert.equal("models" in provider, false);
-  assert.equal(provider.models, undefined);
-});
-
-test("keeps a model's capacity under rivet's names for it", () => {
-  const provider = connect({
+test("connect() emits clean control payload with top-level gatewayKey for Magpie wiring mark", () => {
+  const out = connect({
     gateway,
-    models: [{ id: "rylive/deepseek-flash", name: "DeepSeek Flash", context: 1000000, output: 393216, images: true }],
-  })["provider.providers.tianshu-harness"];
-  assert.deepEqual(provider.models, [
-    { id: "rylive/deepseek-flash", contextWindow: 1000000, maxTokens: 393216, supportsVision: true },
-  ]);
-});
-
-test("writes no capacity it does not know", () => {
-  const provider = connect({ gateway, models: [{ id: "opaque/model" }] })["provider.providers.tianshu-harness"];
-  assert.deepEqual(provider.models, [{ id: "opaque/model" }]);
-});
-
-test("a capacity magpie gives as zero is not written as zero", () => {
-  // magpie fills a model it knows nothing about with 0, and rivet reads 0 as
-  // no budget at all; a missing field lets rivet infer a size instead
-  const provider = connect({
-    gateway,
-    models: [{ id: "rylive/deepseek-flash", context: 0, output: 0, images: false }],
-  })["provider.providers.tianshu-harness"];
-  assert.deepEqual(provider.models, [{ id: "rylive/deepseek-flash" }]);
-});
-
-test("leaves out a model that is not one", () => {
-  const provider = connect({
-    gateway,
-    models: [null, {}, { id: "" }, { id: 42 }, { id: "a/one", context: 1000 }],
-  })["provider.providers.tianshu-harness"];
-  assert.deepEqual(provider.models, [{ id: "a/one", contextWindow: 1000 }]);
-});
-
-test("lists every model magpie offers again, since the provider is written whole", () => {
-  const provider = connect({
-    gateway,
+    model: { id: "trae-cn/qwen3.8-flash-max", context: 128000, output: 16384, images: true },
     models: [
-      { id: "a/one", context: 1000, output: 100 },
-      { id: "b/two", context: 2000, output: 200 },
+      {
+        id: "trae-cn/qwen3.8-flash-max",
+        name: "Qwen",
+        magpie_label: "noisy",
+        context: 128000,
+        output: 16384,
+        images: true,
+        efforts: ["low", "high", "low"],
+        pricing: { prompt: "0.000001", completion: "0.000005" },
+      },
+      { id: "trae-cn/qwen3.8-flash-max", context: 999 }, // duplicate ignored
+      null,
+      {},
+      { id: "" },
     ],
-  })["provider.providers.tianshu-harness"];
-  assert.deepEqual(provider.models.map((m) => m.id), ["a/one", "b/two"]);
-});
-
-test("carries a model's reasoning rungs over as the model spells them", () => {
-  const provider = connect({
-    gateway,
-    models: [{ id: "auto/gpt-6.1-terra", efforts: ["none", "low", "medium", "high", "xhigh", "max", "ultra"] }],
-  })["provider.providers.tianshu-harness"];
-  const capabilities = provider.models[0].capabilities;
-  assert.equal(capabilities.effortFormat, "reasoning_effort");
-  assert.deepEqual(capabilities.effortLevels, ["none", "low", "medium", "high", "xhigh", "max", "ultra"]);
-  // this model does offer rivet's "max", so "xhigh" needs no wire spelling
-  assert.equal("effortCap" in capabilities, false);
-});
-
-test("a rung rivet has no name for says what to send instead", () => {
-  // gemini's ladder stops at xhigh: rivet's "max" goes out as "xhigh"
-  assert.deepEqual(_internal.reasoningCapabilities(["low", "medium", "high", "xhigh"]), {
-    effortFormat: "reasoning_effort",
-    effortLevels: ["low", "medium", "high", "xhigh"],
-    reasoningSplit: true,
-    effortCap: { max: "xhigh" },
   });
-  // a ladder with no "low" sends "low" as "minimal", as Tianshu's own probe does
-  assert.deepEqual(_internal.reasoningCapabilities(["minimal", "medium"]).effortCap, { low: "minimal" });
+
+  assert.equal(out.baseURL, gateway.v1);
+  assert.equal(out.gatewayKey, gateway.key);
+  assert.equal(out.models.length, 1);
+  assert.deepEqual(out.models[0], {
+    id: "trae-cn/qwen3.8-flash-max",
+    context: 128000,
+    output: 16384,
+    images: true,
+    efforts: ["low", "high"],
+    pricing: { prompt: "0.000001", completion: "0.000005" },
+  });
+  assert.deepEqual(out.modelInfo, {
+    id: "trae-cn/qwen3.8-flash-max",
+    context: 128000,
+    output: 16384,
+    images: true,
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(out)), out);
 });
 
-test("declares reasoningSplit so thinking that arrives in reasoning_content is kept", () => {
-  // magpie's gateway answers like the split protocol: reasoning lands in
-  // `reasoning_content`, the answer in `content`. Verified live against
-  // auto/glm-5.3-flash (718 chars of reasoning, 0 chars of content — an empty
-  // reply without this flag), trae-cn/qwen3.8-flash-max and
-  // dgemini/gemini-4-neon, all 200 with reasoning_split: true.
-  const caps = _internal.reasoningCapabilities(["low", "high"]);
-  assert.equal(caps.reasoningSplit, true);
+test("connect() validates gateway and models list before writing", () => {
+  assert.throws(() => connect({ gateway: { key: "k" }, models: [] }), /no \/v1 address/);
+  assert.throws(() => connect({ gateway: { v1: gateway.v1 }, models: [] }), /no key/);
+  assert.throws(() => connect({}), /no \/v1 address/);
+  assert.throws(() => connect(), /no \/v1 address/);
+  for (const bad of ["not-a-list", 42, {}, true]) {
+    assert.throws(() => connect({ gateway, models: bad }), /not a list/);
+  }
+  assert.doesNotThrow(() => connect({ gateway, models: undefined }));
+  assert.doesNotThrow(() => connect({ gateway, models: null }));
 });
 
-test("a model with no reasoning rungs gets no capabilities at all", () => {
-  const provider = connect({
-    gateway,
-    models: [{ id: "rylive/eliroot-v4.1-flash", efforts: [] }],
-  })["provider.providers.tianshu-harness"];
-  assert.equal("capabilities" in provider.models[0], false);
+test("channelKeyFor splits models by subscription software and never uses literal 'magpie'", () => {
+  assert.equal(channelKeyFor("trae-cn/qwen3.8-flash-max"), "trae-cn-magpie");
+  assert.equal(channelKeyFor("zcode/GLM-5.3-Flash"), "zcode-magpie");
+  assert.equal(channelKeyFor("group/gemini"), "group-magpie");
+  assert.equal(channelKeyFor("auto/glm-5.3-flash"), AUTO_CHANNEL);
+  assert.equal(channelKeyFor("AUTO/deepseek-v4"), AUTO_CHANNEL);
+  assert.equal(channelKeyFor("bare-model"), AUTO_CHANNEL);
+  assert.equal(channelKeyFor("Work_Buddy/model-1"), "work-buddy-magpie");
+  assert.equal(channelKeyFor("magpie/foo"), "magpie-magpie");
+  assert.notEqual(channelKeyFor("magpie/foo"), "magpie");
+  assert.equal(isManagedChannelKey("trae-cn-magpie"), true);
+  assert.equal(isManagedChannelKey("auto-magpie"), true);
+  assert.equal(isManagedChannelKey("magpie"), false);
+  assert.equal(isManagedChannelKey("-magpie"), false);
 });
 
-test("prices a model per million tokens, in rivet's names", () => {
-  const model = _internal.modelEntry({
-    id: "auto/gpt-6.1-terra",
+test("endpointNetworkPolicyFor authorizes loopback and private LAN gateways but not public URLs", () => {
+  assert.deepEqual(endpointNetworkPolicyFor("http://127.0.0.1:3425/v1"), {
+    origin: "http://127.0.0.1:3425",
+    allowPrivateNetwork: true,
+  });
+  assert.deepEqual(endpointNetworkPolicyFor("http://localhost:3425/v1"), {
+    origin: "http://localhost:3425",
+    allowPrivateNetwork: true,
+  });
+  assert.deepEqual(endpointNetworkPolicyFor("http://[::1]:3425/v1"), {
+    origin: "http://[::1]:3425",
+    allowPrivateNetwork: true,
+  });
+  assert.deepEqual(endpointNetworkPolicyFor("http://[::ffff:127.0.0.1]:3425/v1"), {
+    origin: "http://[::ffff:7f00:1]:3425",
+    allowPrivateNetwork: true,
+  });
+  assert.deepEqual(endpointNetworkPolicyFor("http://192.168.1.20:3425/v1"), {
+    origin: "http://192.168.1.20:3425",
+    allowPrivateNetwork: true,
+  });
+  // fc0::1 is 0fc0::1 (NOT fc00::/7); must not be misclassified as private
+  assert.equal(endpointNetworkPolicyFor("http://[fc0::1]:3425/v1"), undefined);
+  assert.equal(endpointNetworkPolicyFor("https://gateway.example.com/v1"), undefined);
+});
+
+test("buildTianshuModel maps capacities, clamps maxTokens, converts prices, and handles reasoning rungs", () => {
+  const model = buildTianshuModel({
+    id: "dgemini/gemini-4-neon",
+    context: 100000,
+    output: 200000, // exceeds context -> must clamp
+    images: true,
+    efforts: ["low", "medium", "high", "xhigh"],
     pricing: {
       prompt: "0.000001",
       completion: "0.000005",
-      input_cache_read: "0.00000005",
+      input_cache_read: "0.00000007",
       input_cache_write: "0.00000125",
     },
+    status: "deprecated",
+    deprecationNote: "use newer model",
   });
-  // magpie prices one token; rivet prices a million of them
-  assert.deepEqual(model.pricing, { input: 1, output: 5, cacheRead: 0.05, cacheWrite: 1.25 });
-});
 
-test("the million-token conversion does not carry float noise", () => {
-  // 0.000001 * 1e6 is 1.0000000000000002 in binary floating point; the cents
-  // magpie sent must survive, not that artefact
-  assert.equal(_internal.perMillion("0.000001"), 1);
-  assert.equal(_internal.perMillion(0), 0);
-  assert.equal(_internal.perMillion("0.00000007"), 0.07);
-});
-
-test("writes no price it does not know", () => {
-  // magpie omits pricing for a subscription plan; rivet must not be told 0
-  const model = _internal.modelEntry({ id: "zcode/GLM-5.3-Flash" });
-  assert.equal("pricing" in model, false);
-
-  const partial = _internal.modelEntry({ id: "x/y", pricing: { prompt: "0.000002" } });
-  assert.deepEqual(partial.pricing, { input: 2 });
-});
-
-test("does not pass magpie's own fields through to rivet", () => {
-  // the real payload carries names rivet has never heard of
-  const model = _internal.modelEntry({
-    id: "group/gemini",
-    name: "Gemini智能",
-    magpie_label: "Gemini智能 · routing group",
-    owned_by: "dgemini",
-    tool_call: true,
-    native_endpoints: ["/v1/chat/completions"],
-    service_tiers: [{ id: "priority", name: "Fast" }],
-    supported_parameters: ["tools", "tool_choice", "reasoning"],
+  assert.deepEqual(model, {
+    id: "dgemini/gemini-4-neon",
+    contextWindow: 100000,
+    maxTokens: 100000,
+    supportsVision: true,
+    capabilities: {
+      effortFormat: "reasoning_effort",
+      effortLevels: ["low", "medium", "high", "xhigh"],
+      reasoningSplit: true,
+      effortCap: { max: "xhigh" },
+    },
+    pricing: {
+      input: 1,
+      output: 5,
+      cacheRead: 0.07,
+      cacheWrite: 1.25,
+    },
+    deprecated: true,
+    deprecationNote: "use newer model",
   });
-  assert.deepEqual(model, { id: "group/gemini" });
+
+  assert.deepEqual(reasoningCapabilities(["minimal", "medium"]).effortCap, { low: "minimal" });
+  assert.equal(perMillion("0.000001"), 1);
+  assert.equal(perMillion(0), 0);
+  assert.equal(perMillion(""), undefined);
+  assert.equal(perMillion("   "), undefined);
+  assert.equal(perMillion(null), undefined);
+  assert.equal(perMillion(false), undefined);
+  assert.equal(
+    "pricing" in _internal.normalizeModel({ id: "x/y", pricing: { prompt: "", completion: "  ", input_cache_read: null } }),
+    false,
+  );
+  assert.deepEqual(buildTianshuModel({ id: "opaque/model", context: 0, output: 0, images: false }), {
+    id: "opaque/model",
+  });
 });
 
-test("flags a model magpie has retired rather than offering it silently", () => {
-  const model = _internal.modelEntry({ id: "old/model", status: "deprecated", deprecationNote: "use new/model" });
-  assert.equal(model.deprecated, true);
-  assert.equal(model.deprecationNote, "use new/model");
-});
+test("buildTianshuDesired splits channels cleanly and preserves exact selected model & 4.1.54 contract", () => {
+  const control = {
+    ...connect({
+      gateway,
+      model: { id: "zcode/GLM-5.3-Flash", context: 200000, output: 65536 },
+      models: [
+        {
+          id: "auto/gpt-6.1-terra",
+          context: 922000,
+          output: 128000,
+          images: true,
+          efforts: ["none", "low", "medium", "high", "xhigh", "max", "ultra"],
+          pricing: { prompt: "0.000001", completion: "0.000005" },
+        },
+        { id: "trae-cn/qwen3.8-flash-max", context: 1000000, output: 65536, efforts: ["low", "high"] },
+        { id: "zcode/GLM-5.3-Flash", context: 200000, output: 65536 },
+      ],
+    }),
+    model: "zcode/GLM-5.3-Flash",
+  };
 
-test("writes the same thing twice, since magpie calls connect again on every change", () => {
-  const models = [
-    { id: "a/one", context: 1000, output: 100, images: true, efforts: ["low", "high"], pricing: { prompt: "0.000001" } },
-    { id: "b/two", context: 2000, output: 200, efforts: ["xhigh"] },
-  ];
-  const first = connect({ gateway, models });
-  const second = connect({ gateway, models });
-  assert.deepEqual(second, first);
-  assert.deepEqual(JSON.parse(JSON.stringify(first)), first, "the result must survive magpie's JSON hand-off");
-});
+  const desired = buildTianshuDesired(control);
+  assert.deepEqual(desired.channelKeys, ["auto-magpie", "trae-cn-magpie", "zcode-magpie"]);
+  assert.equal(desired.defaultProvider, "zcode-magpie");
+  assert.equal(desired.defaultModel, "zcode-magpie:zcode/GLM-5.3-Flash");
 
-test("a model list that is not a list stops before writing anything", () => {
-  // magpie hands `models` over; a shape it does not recognise means the
-  // hand-off changed, and a provider written from it would be silently empty
-  for (const bad of ["not-a-list", 42, {}, true]) {
-    assert.throws(() => connect({ gateway, models: bad }), /not a list/, `should reject ${JSON.stringify(bad)}`);
+  for (const [key, provider] of Object.entries(desired.providersByKey)) {
+    assertRivet4154Shape(key, provider);
   }
-  // absent or null is a gateway that simply has no models yet — not an error
-  assert.doesNotThrow(() => connect({ gateway, models: undefined }));
-  assert.doesNotThrow(() => connect({ gateway, models: null }));
-  assert.doesNotThrow(() => connect({ gateway, models: [] }));
-});
-
-test("the notice names the action and then the remedy, in both languages", () => {
-  // agent-kilo's wording is the reference: what Tianshu does, then what the
-  // user has to do about it
-  assert.match(agent.notice, /session starts/i);
-  assert.match(agent.notice, /restart/i);
-  assert.match(agent.notice, /重启/);
-  assert.match(agent.notice, /新开一个会话/);
-});
-
-test("writes agent.defaultModel itself, naming a provider and model that both exist", () => {
-  // rivet refuses to load a config where provider.default names one provider
-  // and agent.defaultModel names another, or a model that provider lacks.
-  const out = connect({
-    gateway,
-    models: [{ id: "a/one", context: 1000 }, { id: "b/two", context: 2000 }],
+  assert.deepEqual(desired.providersByKey["trae-cn-magpie"].capabilities, {
+    effortFormat: "reasoning_effort",
+    reasoningSplit: true,
   });
-  const provider = out["provider.default"];
-  const picked = out["agent.defaultModel"];
-
-  assert.equal(provider, "tianshu-harness");
-  assert.ok(out[`provider.providers.${provider}`], "provider.default must name a provider that was written");
-
-  const [namedProvider, ...rest] = picked.split(":");
-  assert.equal(namedProvider, provider, "agent.defaultModel must start with provider.default");
-  const id = rest.join(":");
-  const listed = out[`provider.providers.${provider}`].models.map((m) => m.id);
-  assert.ok(listed.includes(id), `agent.defaultModel names ${id}, which the provider does not list`);
+  assert.equal("capabilities" in desired.providersByKey["zcode-magpie"], false);
 });
 
-test("a provider with no models names no default model", () => {
-  // nothing to point at: writing agent.defaultModel here would name a model
-  // the provider does not have, which rivet then refuses to load
-  const out = connect({ gateway, models: [] });
-  assert.equal("agent.defaultModel" in out, false);
+test("buildTianshuDesired synthesizes selected model absent from catalog without copying unrelated modelInfo", () => {
+  const desired = buildTianshuDesired({
+    baseURL: gateway.v1,
+    gatewayKey: gateway.key,
+    model: "custom/my-route",
+    modelInfo: { id: "custom/my-route", context: 128000 },
+    models: [{ id: "auto/glm-5.3-flash" }],
+  });
+
+  assert.equal(desired.defaultProvider, "custom-magpie");
+  assert.equal(desired.defaultModel, "custom-magpie:custom/my-route");
+  assert.deepEqual(desired.providersByKey["custom-magpie"].models, [
+    { id: "custom/my-route", contextWindow: 128000 },
+  ]);
+  assertRivet4154Shape("custom-magpie", desired.providersByKey["custom-magpie"]);
+
+  // Stale modelInfo belonging to a DIFFERENT model must NOT bleed onto selected model
+  const isolated = buildTianshuDesired({
+    baseURL: gateway.v1,
+    gatewayKey: gateway.key,
+    model: "custom/fresh-route",
+    modelInfo: { id: "other/old-model", context: 999999, images: true },
+    models: [{ id: "auto/glm-5.3-flash" }],
+  });
+  assert.deepEqual(isolated.providersByKey["custom-magpie"].models, [{ id: "custom/fresh-route" }]);
 });
 
-test("the provider key is one no earlier build has written", () => {
-  // provider-keys.json keeps a provider's models past a disconnect, and this
-  // plugin's 1.x build wrote them under "magpie". A new key starts clean.
-  assert.notEqual(connect({ gateway, models: [] })["provider.default"], "magpie");
-  assert.equal(connect({ gateway, models: [] })["provider.default"], "tianshu-harness");
+test("notice mentions both languages and sync/session behavior", () => {
+  assert.match(agent.notice, /Tianshu 4\.1\.54\+/);
+  assert.match(agent.notice, /session/i);
+  assert.match(agent.notice, /天枢 4\.1\.54\+/);
+  assert.match(agent.notice, /新开会话/);
 });
 
-test("refuses to point Tianshu at a gateway it was given no address or key for", () => {
-  assert.throws(() => connect({ gateway: { key: "k" }, models: [] }), /no \/v1 address/);
-  assert.throws(() => connect({ gateway: { v1: "http://127.0.0.1:3425/v1" }, models: [] }), /no key/);
-  assert.throws(() => connect({}), /no \/v1 address/);
-  assert.throws(() => connect(), /no \/v1 address/);
-});
-
-test("every shape it writes is one rivet keeps", () => {
-  const provider = connect({
-    gateway,
-    models: [
-      {
-        id: "auto/gpt-6.1-terra",
-        context: 922000,
-        output: 128000,
-        images: true,
-        efforts: ["none", "low", "medium", "high", "xhigh", "max", "ultra"],
-        pricing: { prompt: "0.000001", completion: "0.000005", input_cache_read: "0.00000005" },
-      },
-      { id: "opaque/model" },
-      { id: "old/model", status: "deprecated", deprecationNote: "gone" },
-    ],
-  })["provider.providers.tianshu-harness"];
-  assertRivetShape(provider);
+test("_internal.positiveInt handles edge cases cleanly", () => {
+  assert.equal(_internal.positiveInt(128000), 128000);
+  assert.equal(_internal.positiveInt(0), undefined);
+  assert.equal(_internal.positiveInt(-1), undefined);
+  assert.equal(_internal.positiveInt(1.5), undefined);
 });

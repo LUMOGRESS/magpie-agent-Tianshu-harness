@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 416" width="960" height="416" role="img" aria-label="Per-Software Channel Splitting and Lossless Rollback">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1326"/>
+      <stop offset="100%" stop-color="#111d38"/>
+    </linearGradient>
+    <linearGradient id="accent2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="50%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+    <marker id="arr2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 1 1 L 9 5 L 1 9 z" fill="#60a5fa"/>
+    </marker>
+  </defs>
+
+  <style>
+    .t { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+  </style>
+
+  <!-- Frame -->
+  <rect x="4" y="4" width="952" height="408" rx="18" fill="url(#bg2)" stroke="#23365c" stroke-width="1.5"/>
+  <rect x="4" y="4" width="952" height="4" rx="2" fill="url(#accent2)" opacity="0.85"/>
+
+  <!-- Header -->
+  <text x="32" y="42" class="t" font-size="18" font-weight="700" fill="#f1f5f9">按订阅软件自动分渠道 · 原有配置零冲突</text>
+  <text x="394" y="42" class="t" font-size="13" fill="#94a3b8">Channel Isolation &amp; Lossless Rollback</text>
+
+  <!-- Left Panel: Magpie Catalog -->
+  <rect x="32" y="68" width="256" height="258" rx="12" fill="#101a33" stroke="#2c4470" stroke-width="1.2"/>
+  <text x="50" y="96" class="t" font-size="13.5" font-weight="700" fill="#7dd3fc">Magpie 聚合模型清单</text>
+  <text x="50" y="114" class="t" font-size="11" fill="#94a3b8">来自 Agents 页 / 多订阅来源</text>
+
+  <rect x="48" y="130" width="224" height="36" rx="8" fill="#152445" stroke="#2c487a" stroke-width="1"/>
+  <text x="60" y="152" class="mono" font-size="11.5" fill="#e2e8f0">auto/glm-5.3-flash</text>
+
+  <rect x="48" y="176" width="224" height="40" rx="8" fill="#193363" stroke="#4f7fff" stroke-width="1.4"/>
+  <text x="60" y="195" class="mono" font-size="11.5" font-weight="700" fill="#ffffff">ai666/kimi-k3.1-pro</text>
+  <text x="60" y="210" class="t" font-size="10" fill="#93c5fd">★ Magpie 当前选中模型</text>
+
+  <rect x="48" y="226" width="224" height="36" rx="8" fill="#152445" stroke="#2c487a" stroke-width="1"/>
+  <text x="60" y="248" class="mono" font-size="11.5" fill="#e2e8f0">trae-cn/qwen4-max</text>
+
+  <rect x="48" y="272" width="224" height="36" rx="8" fill="#152445" stroke="#2c487a" stroke-width="1"/>
+  <text x="60" y="294" class="mono" font-size="11.5" fill="#e2e8f0">syon/gpt-6-astra</text>
+
+  <!-- Center Splitter Badge -->
+  <line x1="288" y1="197" x2="322" y2="197" stroke="#60a5fa" stroke-width="1.8" marker-end="url(#arr2)"/>
+
+  <rect x="330" y="128" width="128" height="138" rx="14" fill="#16284d" stroke="#4f7fff" stroke-width="1.4"/>
+  <text x="394" y="158" text-anchor="middle" class="t" font-size="13" font-weight="700" fill="#f8fafc">自动分渠道</text>
+  <text x="394" y="178" text-anchor="middle" class="mono" font-size="10.8" fill="#7dd3fc">&lt;prefix&gt;-magpie</text>
+  <line x1="348" y1="192" x2="440" y2="192" stroke="#2c497d" stroke-width="1"/>
+  <text x="394" y="213" text-anchor="middle" class="t" font-size="10.8" fill="#cbd5e1">name === key</text>
+  <text x="394" y="232" text-anchor="middle" class="t" font-size="10.8" fill="#cbd5e1">userSaved: true</text>
+  <text x="394" y="251" text-anchor="middle" class="t" font-size="10.8" fill="#cbd5e1">永不占用 magpie 键</text>
+
+  <line x1="458" y1="197" x2="492" y2="197" stroke="#60a5fa" stroke-width="1.8" marker-end="url(#arr2)"/>
+
+  <!-- Right Panel: Tianshu Providers -->
+  <rect x="500" y="68" width="428" height="258" rx="12" fill="#101a33" stroke="#2c4470" stroke-width="1.2"/>
+  <text x="518" y="96" class="t" font-size="13.5" font-weight="700" fill="#f8fafc">天枢 4.1.54+ 供应商列表</text>
+  <text x="720" y="96" class="mono" font-size="10.5" fill="#94a3b8">config.json + provider-keys.json</text>
+
+  <!-- Managed sub-panel -->
+  <rect x="516" y="110" width="210" height="200" rx="10" fill="#142447" stroke="#3b69b5" stroke-width="1.2"/>
+  <text x="530" y="132" class="t" font-size="11.5" font-weight="700" fill="#93c5fd">插件托管渠道（自动同步）</text>
+
+  <rect x="528" y="144" width="186" height="30" rx="6" fill="#0d1933" stroke="#294578" stroke-width="1"/>
+  <text x="540" y="163" class="mono" font-size="11" fill="#e2e8f0">auto-magpie</text>
+
+  <rect x="528" y="182" width="186" height="36" rx="6" fill="#1d3b75" stroke="#60a5fa" stroke-width="1.3"/>
+  <text x="540" y="198" class="mono" font-size="11" font-weight="700" fill="#ffffff">ai666-magpie</text>
+  <text x="540" y="212" class="t" font-size="9.8" fill="#bae6fd">★ default + defaultModel</text>
+
+  <rect x="528" y="226" width="186" height="30" rx="6" fill="#0d1933" stroke="#294578" stroke-width="1"/>
+  <text x="540" y="245" class="mono" font-size="11" fill="#e2e8f0">trae-cn-magpie</text>
+
+  <rect x="528" y="264" width="186" height="30" rx="6" fill="#0d1933" stroke="#294578" stroke-width="1"/>
+  <text x="540" y="283" class="mono" font-size="11" fill="#e2e8f0">syon-magpie</text>
+
+  <!-- User preserved sub-panel -->
+  <rect x="738" y="110" width="174" height="200" rx="10" fill="#122130" stroke="#2b5d57" stroke-width="1.2"/>
+  <text x="752" y="132" class="t" font-size="11.5" font-weight="700" fill="#6ee7b7">用户原有配置（原样保留）</text>
+
+  <rect x="750" y="146" width="150" height="34" rx="6" fill="#0d1a26" stroke="#264b47" stroke-width="1"/>
+  <text x="760" y="161" class="mono" font-size="10.5" fill="#d1fae5">deepseek / magpie</text>
+  <text x="760" y="174" class="t" font-size="9.5" fill="#94a3b8">手配供应商不覆盖</text>
+
+  <rect x="750" y="190" width="150" height="34" rx="6" fill="#0d1a26" stroke="#264b47" stroke-width="1"/>
+  <text x="760" y="205" class="mono" font-size="10.5" fill="#d1fae5">minimax: null</text>
+  <text x="760" y="218" class="t" font-size="9.5" fill="#94a3b8">已删预设墓碑不复活</text>
+
+  <rect x="750" y="234" width="150" height="34" rx="6" fill="#0d1a26" stroke="#264b47" stroke-width="1"/>
+  <text x="760" y="249" class="t" font-size="10.5" fill="#d1fae5">MCP · 主题 · 偏好</text>
+  <text x="760" y="262" class="t" font-size="9.5" fill="#94a3b8">全量无损保留</text>
+
+  <rect x="750" y="278" width="150" height="22" rx="6" fill="#0f2925" stroke="#2c6e63" stroke-width="0.9"/>
+  <text x="825" y="293" text-anchor="middle" class="t" font-size="10" fill="#6ee7b7">手切天枢内置模型不受干扰</text>
+
+  <!-- Bottom Rollback Strip -->
+  <rect x="32" y="346" width="896" height="44" rx="10" fill="#0f203d" stroke="#28467a" stroke-width="1"/>
+  <rect x="46" y="357" width="154" height="22" rx="6" fill="#182e57" stroke="#3b63a8" stroke-width="1"/>
+  <text x="123" y="372" text-anchor="middle" class="mono" font-size="10.8" fill="#93c5fd">magpie tianshu default</text>
+  <text x="214" y="372" class="t" font-size="12" fill="#cbd5e1">断开或停用插件时：自动清除全部托管的 *-magpie 渠道与缓存条目，并无损恢复原先的默认供应商与默认模型。</text>
+</svg>
